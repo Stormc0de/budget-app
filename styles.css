@@ -1,0 +1,805 @@
+/* ===========================================================
+   Budget — iOS 26 "Liquid Glass" styling.
+
+   The rule Apple applies, and so do we: glass belongs to the
+   INTERFACE layer — the things that float above your content
+   (tab bar, headers, sheets, the + button). Your CONTENT layer
+   — the rows holding actual money figures — stays solid, so
+   nothing you need to read sits on top of a moving blur.
+   =========================================================== */
+
+/* ===========================================================
+   TOKENS
+   =========================================================== */
+:root {
+  color-scheme: light dark;
+
+  /* content surfaces */
+  --bg:         #F0F0F5;
+  --card:       #FFFFFF;
+  --card-press: #E8E8ED;
+  --sunken:     #F2F2F7;
+  --text:       #000000;
+  --text-2:     #8A8A8E;
+  --separator:  rgba(60, 60, 67, 0.13);
+
+  /* accents */
+  --tint:   #007AFF;
+  --green:  #34C759;
+  --red:    #FF3B30;
+
+  /* the glass material: a tint, a blur, a hairline and a highlight.
+     The highlight along the top edge is what reads as "lensing". */
+  --glass:           rgba(255, 255, 255, 0.62);
+  --glass-strong:    rgba(246, 246, 249, 0.86);
+  --glass-edge:      rgba(255, 255, 255, 0.55);
+  --glass-hairline:  rgba(0, 0, 0, 0.06);
+  --glass-blur:      saturate(180%) blur(24px);
+
+  /* controls */
+  --segment-bg:  rgba(120, 120, 128, 0.14);
+  --segment-on:  #FFFFFF;
+  --switch-off:  rgba(120, 120, 128, 0.22);
+  --fill-subtle: rgba(120, 120, 128, 0.10);
+
+  /* status colours */
+  --good-bg: #E4F7EA;  --good-fg: #16803A;
+  --warn-bg: #FFF2D9;  --warn-fg: #8A5A06;
+  --bad-bg:  #FFE6E4;  --bad-fg:  #B3261E;
+
+  /* iOS 26 leans on larger, continuous corners. Nested corners are
+     "concentric": an inner radius equals the outer one minus the gap
+     between them, so the curves stay parallel. */
+  --r-card:  20px;
+  --r-inner: 12px;
+  --r-sheet: 30px;
+  --r-pill:  999px;
+
+  /* soft, layered depth instead of hard borders */
+  --shadow-card:  0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.05);
+  --shadow-float: 0 2px 8px rgba(0,0,0,.10), 0 12px 32px rgba(0,0,0,.14);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:         #000000;
+    --card:       #1C1C1E;
+    --card-press: #2C2C2E;
+    --sunken:     #2C2C2E;
+    --text:       #FFFFFF;
+    --text-2:     #98989F;
+    --separator:  rgba(84, 84, 88, 0.45);
+
+    --tint:   #0A84FF;
+    --green:  #30D158;
+    --red:    #FF453A;
+
+    --glass:          rgba(30, 30, 32, 0.60);
+    --glass-strong:   rgba(26, 26, 28, 0.84);
+    --glass-edge:     rgba(255, 255, 255, 0.12);
+    --glass-hairline: rgba(255, 255, 255, 0.08);
+
+    --segment-bg:  rgba(120, 120, 128, 0.24);
+    --segment-on:  #5A5A5E;
+    --switch-off:  rgba(120, 120, 128, 0.32);
+    --fill-subtle: rgba(120, 120, 128, 0.18);
+
+    --good-bg: #10331B;  --good-fg: #4ADE80;
+    --warn-bg: #3A2C10;  --warn-fg: #FBBF4A;
+    --bad-bg:  #3A1614;  --bad-fg:  #FF6B6B;
+
+    --shadow-card:  0 1px 2px rgba(0,0,0,.30), 0 4px 16px rgba(0,0,0,.35);
+    --shadow-float: 0 2px 10px rgba(0,0,0,.45), 0 14px 36px rgba(0,0,0,.55);
+  }
+}
+
+/* Accessibility: when Reduce Transparency is on, every glass surface
+   becomes opaque and the blurs are dropped. */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass:        var(--bg);
+    --glass-strong: var(--bg);
+    --glass-blur:   none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ===========================================================
+   BASE
+   =========================================================== */
+* { box-sizing: border-box; }
+
+html, body { height: 100%; margin: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
+               "Helvetica Neue", Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+/* A faint colour wash behind everything. Glass needs something with
+   variation underneath it, otherwise the blur has nothing to pick up
+   and the material reads as flat grey. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 45% at 12% 0%,   rgba(0, 122, 255, 0.10), transparent 70%),
+    radial-gradient(55% 40% at 92% 12%,  rgba(52, 199, 89, 0.08), transparent 70%),
+    radial-gradient(70% 50% at 50% 100%, rgba(175, 82, 222, 0.07), transparent 70%);
+}
+@media (prefers-color-scheme: dark) {
+  body::before {
+    background:
+      radial-gradient(60% 45% at 12% 0%,   rgba(10, 132, 255, 0.20), transparent 70%),
+      radial-gradient(55% 40% at 92% 12%,  rgba(48, 209, 88, 0.13), transparent 70%),
+      radial-gradient(70% 50% at 50% 100%, rgba(191, 90, 242, 0.13), transparent 70%);
+  }
+}
+
+button, input, select {
+  font-family: inherit;
+  font-size: 17px;          /* 16px+ stops iOS auto-zooming on focus */
+  color: inherit;
+}
+
+/* ===========================================================
+   SCREENS + NAV HEADER
+   The header is transparent until content slides under it, then it
+   turns to glass — iOS 26's "scroll edge effect".
+   =========================================================== */
+.screen[hidden] { display: none; }
+
+/* The header is glass at all times, so a row scrolling underneath can
+   never show through the title. The scrolled state only deepens it and
+   adds the hairline — the effect is an enhancement, not something
+   legibility depends on. */
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding: calc(env(safe-area-inset-top) + 14px) 20px 10px;
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  transition: background 0.25s ease, box-shadow 0.25s ease;
+}
+
+body.scrolled .nav {
+  background: var(--glass-strong);
+  box-shadow: 0 0.5px 0 var(--glass-hairline);
+}
+
+.nav-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nav h1 {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  text-align: center;
+}
+
+.nav-sub {
+  margin: 3px 0 0;
+  font-size: 14px;
+  color: var(--text-2);
+  text-align: center;
+}
+
+.back-btn {
+  border: 0;
+  background: none;
+  padding: 0 0 4px;
+  margin-left: -3px;
+  color: var(--tint);
+  font-size: 17px;
+  cursor: pointer;
+}
+.back-btn:active { opacity: 0.5; }
+
+/* Bottom padding clears the floating tab bar, the + button and the
+   home indicator, so the last row is never trapped underneath. */
+.content {
+  padding: 10px 16px calc(env(safe-area-inset-bottom) + 156px);
+}
+
+/* ===========================================================
+   FLOATING ADD BUTTON
+   =========================================================== */
+.fab {
+  position: fixed;
+  right: 20px;
+  bottom: calc(env(safe-area-inset-bottom) + 92px);
+  z-index: 25;
+  width: 58px;
+  height: 58px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--tint);
+  color: #fff;
+  font-size: 30px;
+  font-weight: 300;
+  line-height: 1;
+  padding: 0 0 3px;
+  box-shadow: var(--shadow-float);
+  transition: transform 0.2s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.2s ease;
+  cursor: pointer;
+}
+.fab:active { transform: scale(0.92); opacity: 0.92; }
+
+/* ===========================================================
+   LISTS + ROWS  (content layer: solid, not glass)
+   =========================================================== */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.list.history { gap: 8px; }
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 15px 17px;
+  border: 0;
+  border-radius: var(--r-card);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+  text-align: left;
+  color: inherit;
+  transition: transform 0.18s cubic-bezier(0.32, 0.72, 0, 1), background 0.18s ease;
+  cursor: pointer;
+}
+.row:active {
+  background: var(--card-press);
+  transform: scale(0.985);
+}
+
+.row-main { flex: 1; min-width: 0; }
+
+.row-main-btn {
+  border: 0;
+  background: none;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.row-title {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row-sub {
+  margin-top: 3px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text-2);
+}
+.row-sub.overdue { color: var(--red); font-weight: 500; }
+
+.row-amount {
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.2px;
+}
+
+.row-right { text-align: right; }
+
+.banked {
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--green);
+  white-space: nowrap;
+}
+
+.chevron { color: var(--text-2); font-size: 15px; opacity: 0.5; }
+
+.row.paid .row-title,
+.row.paid .row-amount { color: var(--text-2); text-decoration: line-through; }
+
+/* Round check, like Reminders. Drawn at 30px but touchable at 44px —
+   Apple's minimum — via the invisible ::before below. */
+.check {
+  position: relative;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border: 2px solid var(--separator);
+  border-radius: var(--r-pill);
+  background: transparent;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: transparent;
+  font-size: 15px;
+  line-height: 1;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+  cursor: pointer;
+}
+.check.on {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+.check:active { transform: scale(0.9); }
+
+/* invisible 44x44 hit area, 7px larger on every side than the 30px dot */
+.check::before {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  border-radius: var(--r-pill);
+}
+
+/* Category heading inside a list */
+.group-title {
+  margin: 8px 6px 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.1px;
+  color: var(--text-2);
+}
+.group-title:first-child { margin-top: 0; }
+
+.section-title {
+  margin: 28px 6px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-2);
+}
+
+.empty {
+  margin-top: 48px;
+  text-align: center;
+  color: var(--text-2);
+  font-size: 15px;
+}
+
+/* ===========================================================
+   WEEK SCREEN
+   =========================================================== */
+.banner {
+  padding: 15px 17px;
+  border-radius: var(--r-card);
+  margin-bottom: 10px;
+  box-shadow: var(--shadow-card);
+}
+.banner-title  { font-size: 17px; font-weight: 650; letter-spacing: -0.2px; }
+.banner-detail { margin-top: 4px; font-size: 13px; line-height: 1.4; opacity: 0.88; }
+
+.banner.good { background: var(--good-bg); color: var(--good-fg); }
+.banner.warn { background: var(--warn-bg); color: var(--warn-fg); }
+.banner.bad  { background: var(--bad-bg);  color: var(--bad-fg);  }
+.banner.todo { background: var(--card);    color: var(--text);    }
+
+.account-card {
+  display: block;
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 15px 17px 17px;
+  border: 0;
+  border-radius: var(--r-card);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+  text-align: left;
+  color: inherit;
+  transition: transform 0.18s cubic-bezier(0.32, 0.72, 0, 1), background 0.18s ease;
+  cursor: pointer;
+}
+.account-card:active { background: var(--card-press); transform: scale(0.985); }
+
+.account-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.account-label { font-size: 13px; color: var(--text-2); }
+
+.account-balance {
+  margin-top: 2px;
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Concentric corners: the card is 20px with 8px of padding around
+   these tiles, so 20 - 8 = 12px keeps the curves parallel. */
+.stat-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+.stat {
+  flex: 1;
+  padding: 9px 10px;
+  border-radius: var(--r-inner);
+  background: var(--fill-subtle);
+  text-align: center;
+}
+.stat-label { font-size: 11px; color: var(--text-2); }
+.stat-value {
+  margin-top: 2px;
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.stat-value.negative { color: var(--red); }
+
+/* Fund / Pay chips */
+.bill-row { align-items: center; }
+
+.chips {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* 36px tall, with 4px of invisible hit area above and below taking each
+   chip to Apple's 44px minimum. The 8px gap is exactly twice that, so
+   the two targets meet without overlapping — a tap can never land on
+   the wrong chip. */
+.chip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 82px;
+  min-height: 36px;      /* pinned, not left to line-height rounding */
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--fill-subtle);
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+  transition: transform 0.18s cubic-bezier(0.32, 0.72, 0, 1), background 0.2s ease;
+  cursor: pointer;
+}
+.chip:active { transform: scale(0.93); }
+
+.chip::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  top: -4px; bottom: -4px;
+}
+
+.chip.on-fund {
+  background: var(--tint);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.30);
+}
+.chip.on-paid {
+  background: var(--green);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(52, 199, 89, 0.30);
+}
+
+/* ===========================================================
+   DETAIL SCREENS
+   =========================================================== */
+.balance-box {
+  padding: 22px 17px 24px;
+  border-radius: var(--r-card);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+  text-align: center;
+}
+.balance-label { font-size: 13px; color: var(--text-2); }
+.balance-value {
+  margin-top: 5px;
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: -1.2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hist-amount {
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.hist-amount.up   { color: var(--red); }
+.hist-amount.down { color: var(--green); }
+
+/* ===========================================================
+   FLOATING TAB BAR — the signature iOS 26 shape: a glass capsule
+   hovering above the content rather than a bar welded to the edge.
+   =========================================================== */
+.tabbar {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: calc(env(safe-area-inset-bottom) + 12px);
+  z-index: 20;
+  display: flex;
+  padding: 6px;
+  border-radius: var(--r-pill);
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow:
+    inset 0 0.5px 0 var(--glass-edge),   /* specular top highlight */
+    0 0 0 0.5px var(--glass-hairline),
+    var(--shadow-float);
+}
+
+.tab {
+  position: relative;
+  flex: 1;
+  border: 0;
+  background: none;
+  padding: 7px 0 5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  color: var(--text-2);
+  font-size: 10px;
+  font-weight: 500;
+  border-radius: var(--r-pill);
+  transition: color 0.2s ease;
+  cursor: pointer;
+}
+.tab.active { color: var(--tint); }
+
+/* the selected tab sits on its own soft pill */
+.tab.active::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-pill);
+  background: var(--fill-subtle);
+  z-index: -1;
+}
+
+.tab svg {
+  width: 25px;
+  height: 25px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ===========================================================
+   SHEET — glass, with the deeper corner radius iOS 26 uses
+   =========================================================== */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(0, 0, 0, 0.35);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  animation: fade 0.25s ease;
+}
+.sheet-backdrop[hidden] { display: none; }
+@keyframes fade { from { opacity: 0; } }
+
+.sheet {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 31;
+  max-height: 90%;
+  overflow-y: auto;
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+  box-shadow: inset 0 0.5px 0 var(--glass-edge), var(--shadow-float);
+  padding-bottom: calc(env(safe-area-inset-bottom) + 24px);
+  animation: slide-up 0.42s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.sheet[hidden] { display: none; }
+@keyframes slide-up { from { transform: translateY(100%); } }
+
+.sheet-bar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 16px 18px 14px;
+  background: transparent;
+}
+.sheet-bar h2 { margin: 0; font-size: 17px; font-weight: 650; }
+
+.link-btn {
+  border: 0;
+  background: none;
+  color: var(--tint);
+  padding: 4px;
+  cursor: pointer;
+}
+.link-btn.strong { font-weight: 650; }
+.link-btn:active { opacity: 0.5; }
+
+/* ===========================================================
+   FORM FIELDS
+   =========================================================== */
+.field-group {
+  margin: 4px 16px 16px;
+  border-radius: var(--r-card);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.field-group[hidden] { display: none; }
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 17px;
+  border-bottom: 0.5px solid var(--separator);
+}
+.field:last-child { border-bottom: 0; }
+.field > span { flex: 0 0 120px; }
+
+.field input,
+.field select {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  outline: none;
+  text-align: right;
+  padding: 0;
+  color: inherit;
+}
+.field select { -webkit-appearance: none; appearance: none; cursor: pointer; }
+
+.note {
+  margin: 0 22px 22px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+.note[hidden] { display: none; }
+
+.form-error {
+  margin: -8px 22px 12px;
+  color: var(--red);
+  font-size: 14px;
+}
+.form-error[hidden] { display: none; }
+
+/* ===========================================================
+   SEGMENTED CONTROL — glass track, floating selected capsule
+   =========================================================== */
+.segmented {
+  display: flex;
+  width: 100%;
+  padding: 2px;
+  border-radius: var(--r-pill);
+  background: var(--segment-bg);
+  gap: 2px;
+}
+
+.seg {
+  flex: 1;
+  border: 0;
+  border-radius: var(--r-pill);
+  padding: 8px 4px;
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.22s ease, box-shadow 0.22s ease;
+  cursor: pointer;
+}
+.seg.active {
+  background: var(--segment-on);
+  font-weight: 650;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.14), inset 0 0.5px 0 var(--glass-edge);
+}
+
+/* ===========================================================
+   ON / OFF SWITCH
+   The selector is .field input.switch, not just .switch: the generic
+   ".field input" rule above is more specific than a lone class and
+   would otherwise blank out the track and stretch it wide.
+   =========================================================== */
+.field input.switch {
+  position: relative;
+  flex: 0 0 auto;
+  margin-left: auto;
+  width: 51px;
+  height: 31px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--switch-off);
+  -webkit-appearance: none;
+  appearance: none;
+  transition: background 0.25s ease;
+  cursor: pointer;
+}
+.field input.switch:checked { background: var(--green); }
+
+.field input.switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: var(--r-pill);
+  background: #fff;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.22);
+  transition: transform 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.field input.switch:checked::after { transform: translateX(20px); }
+
+/* ===========================================================
+   BIG ACTION BUTTONS — capsules, the iOS 26 default shape
+   =========================================================== */
+.big-btn {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  padding: 16px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+  color: var(--tint);
+  font-size: 17px;
+  font-weight: 600;
+  transition: transform 0.18s cubic-bezier(0.32, 0.72, 0, 1), background 0.18s ease;
+  cursor: pointer;
+}
+.big-btn:active { background: var(--card-press); transform: scale(0.98); }
+
+.delete-btn {
+  display: block;
+  width: calc(100% - 32px);
+  margin: 16px;
+  padding: 16px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+  color: var(--red);
+  font-weight: 600;
+  transition: transform 0.18s cubic-bezier(0.32, 0.72, 0, 1), background 0.18s ease;
+  cursor: pointer;
+}
+.delete-btn:active { background: var(--card-press); transform: scale(0.98); }
+.delete-btn[hidden] { display: none; }

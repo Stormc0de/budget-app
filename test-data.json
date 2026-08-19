@@ -1,0 +1,549 @@
+{
+  "app": "budget-app",
+  "version": 2,
+  "exportedAt": "2026-08-18T22:09:12.249967Z",
+  "cards": [
+    {
+      "id": "c1",
+      "name": "Chase Freedom",
+      "balance": 1258.97,
+      "apr": 24.99,
+      "min": 35,
+      "history": [
+        {
+          "id": "k1",
+          "at": "2026-07-01T12:00:00.000Z",
+          "delta": 1200,
+          "balanceAfter": 1200,
+          "reason": "Opening balance"
+        },
+        {
+          "id": "k2",
+          "at": "2026-07-16T12:00:00.000Z",
+          "delta": 64.3,
+          "balanceAfter": 1264.3,
+          "reason": "Groceries"
+        },
+        {
+          "id": "k3",
+          "at": "2026-07-30T12:00:00.000Z",
+          "delta": -200,
+          "balanceAfter": 1064.3,
+          "reason": "Payment"
+        },
+        {
+          "id": "k4",
+          "at": "2026-08-06T12:00:00.000Z",
+          "delta": 26.41,
+          "balanceAfter": 1090.71,
+          "reason": "Interest charge"
+        },
+        {
+          "id": "k5",
+          "at": "2026-08-15T12:00:00.000Z",
+          "delta": 168.26,
+          "balanceAfter": 1258.97,
+          "reason": "Statement correction"
+        }
+      ]
+    },
+    {
+      "id": "c2",
+      "name": "Amex Blue Cash",
+      "balance": 430.1,
+      "apr": 19.24,
+      "min": 25,
+      "history": [
+        {
+          "id": "k6",
+          "at": "2026-07-09T12:00:00.000Z",
+          "delta": 500,
+          "balanceAfter": 500,
+          "reason": "Opening balance"
+        },
+        {
+          "id": "k7",
+          "at": "2026-08-09T12:00:00.000Z",
+          "delta": -77.8,
+          "balanceAfter": 422.2,
+          "reason": "Payment"
+        },
+        {
+          "id": "k8",
+          "at": "2026-08-17T12:00:00.000Z",
+          "delta": 7.9,
+          "balanceAfter": 430.1,
+          "reason": "Interest charge"
+        }
+      ]
+    },
+    {
+      "id": "c3",
+      "name": "Capital One Quicksilver",
+      "balance": 0,
+      "apr": 27.49,
+      "min": 0,
+      "history": []
+    }
+  ],
+  "bills": [
+    {
+      "id": "rent",
+      "name": "Rent",
+      "amount": 1850,
+      "day": 1,
+      "category": "bill",
+      "variable": false,
+      "envelope": false,
+      "balance": 0,
+      "fundedMonth": "2026-08",
+      "fundedAmount": 1850,
+      "paidMonth": "2026-08",
+      "paidAmount": 1850,
+      "paidFromEnvelope": 1850,
+      "history": [
+        {
+          "id": "e1",
+          "at": "2026-08-01T12:00:00.000Z",
+          "delta": 1850,
+          "balanceAfter": 1850,
+          "reason": "Funded"
+        },
+        {
+          "id": "e2",
+          "at": "2026-08-02T12:00:00.000Z",
+          "delta": -1850,
+          "balanceAfter": 0,
+          "reason": "Paid $1,850.00"
+        }
+      ]
+    },
+    {
+      "id": "internet",
+      "name": "Internet",
+      "amount": 70,
+      "day": 3,
+      "category": "bill",
+      "variable": false,
+      "envelope": false,
+      "balance": 0,
+      "fundedMonth": "2026-08",
+      "fundedAmount": 70,
+      "paidMonth": "2026-08",
+      "paidAmount": 70,
+      "paidFromEnvelope": 70,
+      "history": [
+        {
+          "id": "e3",
+          "at": "2026-08-03T12:00:00.000Z",
+          "delta": 70,
+          "balanceAfter": 70,
+          "reason": "Funded"
+        },
+        {
+          "id": "e4",
+          "at": "2026-08-04T12:00:00.000Z",
+          "delta": -70,
+          "balanceAfter": 0,
+          "reason": "Paid $70.00"
+        }
+      ]
+    },
+    {
+      "id": "insurance",
+      "name": "Car Insurance",
+      "amount": 142.5,
+      "day": 12,
+      "category": "bill",
+      "variable": false,
+      "envelope": false,
+      "balance": 142.5,
+      "fundedMonth": "2026-08",
+      "fundedAmount": 142.5,
+      "paidMonth": null,
+      "paidAmount": 0,
+      "paidFromEnvelope": 0,
+      "history": [
+        {
+          "id": "e5",
+          "at": "2026-08-05T12:00:00.000Z",
+          "delta": 142.5,
+          "balanceAfter": 142.5,
+          "reason": "Funded"
+        }
+      ]
+    },
+    {
+      "id": "phone",
+      "name": "Phone",
+      "amount": 88.5,
+      "day": 20,
+      "category": "bill",
+      "variable": false,
+      "envelope": false,
+      "balance": 88.5,
+      "fundedMonth": "2026-08",
+      "fundedAmount": 88.5,
+      "paidMonth": null,
+      "paidAmount": 0,
+      "paidFromEnvelope": 0,
+      "history": [
+        {
+          "id": "e6",
+          "at": "2026-08-13T12:00:00.000Z",
+          "delta": 88.5,
+          "balanceAfter": 88.5,
+          "reason": "Funded"
+        }
+      ]
+    },
+    {
+      "id": "water",
+      "name": "Water",
+      "amount": 65,
+      "day": 25,
+      "category": "bill",
+      "variable": false,
+      "envelope": false,
+      "balance": 0,
+      "fundedMonth": null,
+      "fundedAmount": 0,
+      "paidMonth": null,
+      "paidAmount": 0,
+      "paidFromEnvelope": 0,
+      "history": []
+    },
+    {
+      "id": "car",
+      "name": "Car Payment",
+      "amount": 342.18,
+      "day": 20,
+      "category": "debt",
+      "variable": false,
+      "envelope": false,
+      "balance": 0,
+      "fundedMonth": null,
+      "fundedAmount": 0,
+      "paidMonth": null,
+      "paidAmount": 0,
+      "paidFromEnvelope": 0,
+      "history": []
+    },
+    {
+      "id": "chasepay",
+      "name": "Chase Freedom Payment",
+      "amount": 35,
+      "day": 22,
+      "category": "debt",
+      "variable": false,
+      "envelope": false,
+      "balance": 0,
+      "fundedMonth": null,
+      "fundedAmount": 0,
+      "paidMonth": null,
+      "paidAmount": 0,
+      "paidFromEnvelope": 0,
+      "history": []
+    },
+    {
+      "id": "amexpay",
+      "name": "Amex Payment",
+      "amount": 25,
+      "day": 8,
+      "category": "debt",
+      "variable": false,
+      "envelope": false,
+      "balance": 0,
+      "fundedMonth": "2026-08",
+      "fundedAmount": 25,
+      "paidMonth": "2026-08",
+      "paidAmount": 25,
+      "paidFromEnvelope": 25,
+      "history": [
+        {
+          "id": "e7",
+          "at": "2026-08-07T12:00:00.000Z",
+          "delta": 25,
+          "balanceAfter": 25,
+          "reason": "Funded"
+        },
+        {
+          "id": "e8",
+          "at": "2026-08-08T12:00:00.000Z",
+          "delta": -25,
+          "balanceAfter": 0,
+          "reason": "Paid $25.00"
+        }
+      ]
+    },
+    {
+      "id": "cc",
+      "name": "Credit Card",
+      "amount": 120,
+      "day": "last",
+      "category": "bill",
+      "variable": false,
+      "envelope": false,
+      "balance": 0,
+      "fundedMonth": null,
+      "fundedAmount": 0,
+      "paidMonth": null,
+      "paidAmount": 0,
+      "paidFromEnvelope": 0,
+      "history": []
+    },
+    {
+      "id": "gym",
+      "name": "Gym",
+      "amount": 39.99,
+      "day": 31,
+      "category": "bill",
+      "variable": false,
+      "envelope": false,
+      "balance": 0,
+      "fundedMonth": null,
+      "fundedAmount": 0,
+      "paidMonth": null,
+      "paidAmount": 0,
+      "paidFromEnvelope": 0,
+      "history": []
+    },
+    {
+      "id": "fpl",
+      "name": "FPL",
+      "amount": 200,
+      "day": "any",
+      "category": "bill",
+      "variable": true,
+      "envelope": true,
+      "balance": 50,
+      "fundedMonth": "2026-08",
+      "fundedAmount": 200,
+      "paidMonth": "2026-08",
+      "paidAmount": 175,
+      "paidFromEnvelope": 175,
+      "history": [
+        {
+          "id": "e9",
+          "at": "2026-07-09T12:00:00.000Z",
+          "delta": 200,
+          "balanceAfter": 200,
+          "reason": "Funded"
+        },
+        {
+          "id": "e10",
+          "at": "2026-07-25T12:00:00.000Z",
+          "delta": -175,
+          "balanceAfter": 25,
+          "reason": "Paid $175.00"
+        },
+        {
+          "id": "e11",
+          "at": "2026-08-09T12:00:00.000Z",
+          "delta": 200,
+          "balanceAfter": 225,
+          "reason": "Funded"
+        },
+        {
+          "id": "e12",
+          "at": "2026-08-15T12:00:00.000Z",
+          "delta": -175,
+          "balanceAfter": 50,
+          "reason": "FPL actual $175.00"
+        }
+      ]
+    },
+    {
+      "id": "hair",
+      "name": "Haircut",
+      "amount": 80,
+      "day": "any",
+      "category": "bill",
+      "variable": false,
+      "envelope": true,
+      "balance": 160,
+      "fundedMonth": "2026-08",
+      "fundedAmount": 80,
+      "paidMonth": null,
+      "paidAmount": 0,
+      "paidFromEnvelope": 0,
+      "history": [
+        {
+          "id": "e13",
+          "at": "2026-07-10T12:00:00.000Z",
+          "delta": 80,
+          "balanceAfter": 80,
+          "reason": "Funded"
+        },
+        {
+          "id": "e14",
+          "at": "2026-08-09T12:00:00.000Z",
+          "delta": 80,
+          "balanceAfter": 160,
+          "reason": "Funded"
+        }
+      ]
+    },
+    {
+      "id": "maint",
+      "name": "Car Maintenance",
+      "amount": 75,
+      "day": "any",
+      "category": "bill",
+      "variable": false,
+      "envelope": true,
+      "balance": 450,
+      "fundedMonth": "2026-08",
+      "fundedAmount": 75,
+      "paidMonth": null,
+      "paidAmount": 0,
+      "paidFromEnvelope": 0,
+      "history": [
+        {
+          "id": "e15",
+          "at": "2026-03-11T12:00:00.000Z",
+          "delta": 75,
+          "balanceAfter": 75,
+          "reason": "Funded"
+        },
+        {
+          "id": "e16",
+          "at": "2026-04-10T12:00:00.000Z",
+          "delta": 75,
+          "balanceAfter": 150,
+          "reason": "Funded"
+        },
+        {
+          "id": "e17",
+          "at": "2026-05-10T12:00:00.000Z",
+          "delta": 75,
+          "balanceAfter": 225,
+          "reason": "Funded"
+        },
+        {
+          "id": "e18",
+          "at": "2026-06-10T12:00:00.000Z",
+          "delta": 75,
+          "balanceAfter": 300,
+          "reason": "Funded"
+        },
+        {
+          "id": "e19",
+          "at": "2026-07-10T12:00:00.000Z",
+          "delta": 75,
+          "balanceAfter": 375,
+          "reason": "Funded"
+        },
+        {
+          "id": "e20",
+          "at": "2026-08-09T12:00:00.000Z",
+          "delta": 75,
+          "balanceAfter": 450,
+          "reason": "Funded"
+        }
+      ]
+    }
+  ],
+  "account": {
+    "balance": 1211.45,
+    "history": [
+      {
+        "id": "a0",
+        "at": "2026-07-11T12:00:00.000Z",
+        "delta": 1150.0,
+        "balanceAfter": 1150.0,
+        "reason": "Opening balance"
+      },
+      {
+        "id": "a1",
+        "at": "2026-07-16T12:00:00.000Z",
+        "delta": 484.0,
+        "balanceAfter": 1634.0,
+        "reason": "Weekly transfer in"
+      },
+      {
+        "id": "a2",
+        "at": "2026-07-23T12:00:00.000Z",
+        "delta": 484.0,
+        "balanceAfter": 2118.0,
+        "reason": "Weekly transfer in"
+      },
+      {
+        "id": "a3",
+        "at": "2026-07-25T12:00:00.000Z",
+        "delta": -175.0,
+        "balanceAfter": 1943.0,
+        "reason": "Paid FPL"
+      },
+      {
+        "id": "a4",
+        "at": "2026-07-30T12:00:00.000Z",
+        "delta": 484.0,
+        "balanceAfter": 2427.0,
+        "reason": "Weekly transfer in"
+      },
+      {
+        "id": "a5",
+        "at": "2026-08-02T12:00:00.000Z",
+        "delta": -1850.0,
+        "balanceAfter": 577.0,
+        "reason": "Paid Rent"
+      },
+      {
+        "id": "a6",
+        "at": "2026-08-04T12:00:00.000Z",
+        "delta": -70.0,
+        "balanceAfter": 507.0,
+        "reason": "Paid Internet"
+      },
+      {
+        "id": "a7",
+        "at": "2026-08-06T12:00:00.000Z",
+        "delta": 484.0,
+        "balanceAfter": 991.0,
+        "reason": "Weekly transfer in"
+      },
+      {
+        "id": "a8",
+        "at": "2026-08-08T12:00:00.000Z",
+        "delta": -25.0,
+        "balanceAfter": 966.0,
+        "reason": "Paid Amex Payment"
+      },
+      {
+        "id": "a9",
+        "at": "2026-08-09T12:00:00.000Z",
+        "delta": -12.0,
+        "balanceAfter": 954.0,
+        "reason": "Bank fee"
+      },
+      {
+        "id": "a10",
+        "at": "2026-08-13T12:00:00.000Z",
+        "delta": 484.0,
+        "balanceAfter": 1438.0,
+        "reason": "Weekly transfer in"
+      },
+      {
+        "id": "a11",
+        "at": "2026-08-15T12:00:00.000Z",
+        "delta": -175.0,
+        "balanceAfter": 1263.0,
+        "reason": "Paid FPL"
+      },
+      {
+        "id": "a12",
+        "at": "2026-08-16T12:00:00.000Z",
+        "delta": -51.55,
+        "balanceAfter": 1211.45,
+        "reason": "Corrected to match bank"
+      }
+    ]
+  },
+  "settings": {
+    "weeklyTransfer": 484,
+    "lastPaycheckWeek": "2026-08-13",
+    "lastTransferWeek": null,
+    "lastTransferAmount": 0
+  }
+}

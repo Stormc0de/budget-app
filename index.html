@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- viewport-fit=cover lets the page draw under the notch so safe-area padding works -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <title>Budget</title>
+
+  <!-- PWA / iOS home screen setup -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Budget">
+  <link rel="apple-touch-icon" href="icon-192.png">
+
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ============ WEEK SCREEN (the Thursday ritual) ============ -->
+  <section class="screen" id="screen-week">
+    <header class="nav">
+      <div class="nav-row">
+        <h1>This Week</h1>
+      </div>
+      <p class="nav-sub" id="week-sub"></p>
+    </header>
+
+    <main class="content">
+      <!-- Green / amber / red "am I good?" banner -->
+      <div class="banner" id="week-banner">
+        <div class="banner-title" id="banner-title"></div>
+        <div class="banner-detail" id="banner-detail"></div>
+      </div>
+
+      <!-- The three Bills-account numbers. Tap to see history. -->
+      <button class="account-card" id="account-open">
+        <div class="account-top">
+          <span class="account-label">Bills account</span>
+          <span class="chevron">›</span>
+        </div>
+        <div class="account-balance" id="acct-balance">$0.00</div>
+        <div class="stat-row">
+          <div class="stat">
+            <div class="stat-label">Committed</div>
+            <div class="stat-value" id="acct-committed">$0.00</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Free cushion</div>
+            <div class="stat-value" id="acct-cushion">$0.00</div>
+          </div>
+        </div>
+      </button>
+
+      <h2 class="section-title">Thursday ritual</h2>
+      <div class="list">
+        <div class="row">
+          <button class="check" data-ritual="paycheck" aria-label="Mark that you got paid">✓</button>
+          <div class="row-main">
+            <div class="row-title">Got paid</div>
+            <div class="row-sub" id="paycheck-sub"></div>
+          </div>
+        </div>
+        <div class="row">
+          <button class="check" data-ritual="transfer" aria-label="Mark the transfer as made">✓</button>
+          <button class="row-main row-main-btn" id="edit-transfer">
+            <div class="row-title">Transferred to Bills</div>
+            <div class="row-sub" id="transfer-sub"></div>
+          </button>
+          <div class="row-amount" id="transfer-amount"></div>
+        </div>
+      </div>
+
+      <h2 class="section-title">Fund &amp; pay</h2>
+      <div class="list" id="week-bills"></div>
+      <p class="empty" id="week-empty" hidden>No bills yet. Add them on the Bills tab.</p>
+    </main>
+  </section>
+
+  <!-- ============ BILLS ACCOUNT DETAIL ============ -->
+  <section class="screen" id="screen-account" hidden>
+    <header class="nav">
+      <button class="back-btn" id="account-back">‹ This Week</button>
+      <div class="nav-row">
+        <h1>Bills Account</h1>
+      </div>
+      <p class="nav-sub" id="account-sub"></p>
+    </header>
+
+    <main class="content">
+      <div class="balance-box">
+        <div class="balance-label">Total balance</div>
+        <div class="balance-value" id="account-balance-big">$0.00</div>
+        <div class="stat-row">
+          <div class="stat">
+            <div class="stat-label">Committed</div>
+            <div class="stat-value" id="account-committed-big">$0.00</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Free cushion</div>
+            <div class="stat-value" id="account-cushion-big">$0.00</div>
+          </div>
+        </div>
+      </div>
+
+      <button class="big-btn" id="account-adjust-btn">Correct Balance</button>
+      <p class="note">
+        Use this when the real account doesn't match — an unexpected charge,
+        a fee, or interest. Every correction is kept in the list below.
+      </p>
+
+      <h2 class="section-title">History</h2>
+      <div class="list history" id="account-history"></div>
+      <p class="empty" id="account-history-empty" hidden>Nothing yet.</p>
+    </main>
+  </section>
+
+  <!-- ============ BILLS SCREEN (manage them) ============ -->
+  <section class="screen" id="screen-bills" hidden>
+    <header class="nav">
+      <div class="nav-row">
+        <h1>Bills</h1>
+      </div>
+      <p class="nav-sub" id="bills-summary"></p>
+    </header>
+
+    <main class="content">
+      <div class="list" id="bills-list"></div>
+      <p class="empty" id="bills-empty" hidden>No bills yet. Tap + to add one.</p>
+    </main>
+
+    <button class="fab" id="add-bill" aria-label="Add bill">+</button>
+  </section>
+
+  <!-- ============ ONE BILL'S ENVELOPE + HISTORY ============ -->
+  <section class="screen" id="screen-bill" hidden>
+    <header class="nav">
+      <button class="back-btn" id="bill-back">‹ Bills</button>
+      <div class="nav-row">
+        <h1 id="bill-title">Bill</h1>
+      </div>
+      <p class="nav-sub" id="bill-sub"></p>
+    </header>
+
+    <main class="content">
+      <div class="balance-box">
+        <div class="balance-label">Banked in this envelope</div>
+        <div class="balance-value" id="bill-banked">$0.00</div>
+      </div>
+
+      <button class="big-btn" id="bill-edit-btn">Edit Bill</button>
+
+      <h2 class="section-title">History</h2>
+      <div class="list history" id="bill-history"></div>
+      <p class="empty" id="bill-history-empty" hidden>Nothing yet.</p>
+    </main>
+  </section>
+
+  <!-- ============ DEBTS SCREEN ============ -->
+  <section class="screen" id="screen-cards" hidden>
+    <header class="nav">
+      <div class="nav-row">
+        <h1>Debts</h1>
+      </div>
+      <p class="nav-sub" id="cards-summary"></p>
+    </header>
+
+    <main class="content">
+      <div class="list" id="cards-list"></div>
+      <p class="empty" id="cards-empty" hidden>No debts yet. Tap + to add one.</p>
+    </main>
+
+    <button class="fab" id="add-card" aria-label="Add debt">+</button>
+  </section>
+
+  <!-- ============ ONE DEBT'S DETAIL + HISTORY ============
+       In the code these are still called "cards", so that backup files
+       you already saved keep working. -->
+  <section class="screen" id="screen-card" hidden>
+    <header class="nav">
+      <button class="back-btn" id="card-back">‹ Debts</button>
+      <div class="nav-row">
+        <h1 id="card-title">Debt</h1>
+      </div>
+      <p class="nav-sub" id="card-sub"></p>
+    </header>
+
+    <main class="content">
+      <div class="balance-box">
+        <div class="balance-label">Current balance</div>
+        <div class="balance-value" id="card-balance-big">$0.00</div>
+      </div>
+
+      <button class="big-btn" id="adjust-btn">Adjust Balance</button>
+
+      <h2 class="section-title">History</h2>
+      <div class="list history" id="history-list"></div>
+      <p class="empty" id="history-empty" hidden>No adjustments yet.</p>
+
+      <button class="big-btn" id="edit-card-btn">Edit Debt Details</button>
+    </main>
+  </section>
+
+  <!-- ============ BACKUP SCREEN ============ -->
+  <section class="screen" id="screen-backup" hidden>
+    <header class="nav">
+      <div class="nav-row">
+        <h1>Backup</h1>
+      </div>
+      <p class="nav-sub" id="backup-summary"></p>
+    </header>
+
+    <main class="content">
+      <button class="big-btn" id="export-btn">Save a Backup</button>
+      <p class="note">
+        Makes one file with your bills, envelopes, debts and account balance.
+        On iPhone the share sheet opens — choose <strong>Save to Files</strong>
+        to keep it in the Files app, or mail it to yourself.
+      </p>
+
+      <button class="big-btn" id="import-btn">Restore from Backup</button>
+      <p class="note">
+        Pick a backup file you saved earlier. This <strong>replaces</strong> everything
+        currently in the app, so save a fresh backup first if you're unsure.
+      </p>
+
+      <input type="file" id="import-file" accept="application/json,.json" hidden>
+    </main>
+  </section>
+
+  <!-- ============ BOTTOM TAB BAR ============ -->
+  <nav class="tabbar">
+    <button class="tab active" data-tab="week">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3" y="5" width="18" height="16" rx="3"></rect>
+        <path d="M3 10h18M8 3v4M16 3v4" stroke-width="2"></path>
+      </svg>
+      <span>Week</span>
+    </button>
+    <button class="tab" data-tab="bills">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="4" y="3" width="16" height="18" rx="3"></rect>
+        <path d="M8 9h8M8 13h8M8 17h5" stroke-width="2"></path>
+      </svg>
+      <span>Bills</span>
+    </button>
+    <button class="tab" data-tab="cards">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="2" y="5" width="20" height="14" rx="3"></rect>
+        <path d="M2 10h20" stroke-width="2"></path>
+      </svg>
+      <span>Debts</span>
+    </button>
+    <button class="tab" data-tab="backup">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 3v11m0 0l-4-4m4 4l4-4" stroke-width="2"></path>
+        <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-width="2"></path>
+      </svg>
+      <span>Backup</span>
+    </button>
+  </nav>
+
+  <!-- ============ ADD / EDIT SHEET (shared by everything) ============ -->
+  <div class="sheet-backdrop" id="backdrop" hidden></div>
+
+  <div class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <div class="sheet-bar">
+      <button class="link-btn" id="sheet-cancel">Cancel</button>
+      <h2 id="sheet-title">New Bill</h2>
+      <button class="link-btn strong" id="sheet-save">Save</button>
+    </div>
+
+    <form id="sheet-form" novalidate>
+      <!-- Debt fields -->
+      <div class="field-group" id="fields-card" hidden>
+        <label class="field">
+          <span>Name</span>
+          <input type="text" id="card-name" placeholder="Chase Freedom" autocomplete="off">
+        </label>
+        <label class="field" id="card-balance-row">
+          <span>Balance</span>
+          <input type="text" inputmode="decimal" id="card-balance" placeholder="0.00">
+        </label>
+        <label class="field">
+          <span>Interest %</span>
+          <input type="text" inputmode="decimal" id="card-apr" placeholder="0.00">
+        </label>
+        <label class="field">
+          <span>Min. Payment</span>
+          <input type="text" inputmode="decimal" id="card-min" placeholder="0.00">
+        </label>
+      </div>
+
+      <!-- Bill fields -->
+      <div class="field-group" id="fields-bill" hidden>
+        <div class="field">
+          <div class="segmented" id="bill-category">
+            <button type="button" class="seg active" data-cat="bill">Bill</button>
+            <button type="button" class="seg" data-cat="debt">Card / loan</button>
+          </div>
+        </div>
+        <label class="field">
+          <span>Name</span>
+          <input type="text" id="bill-name" placeholder="Electric" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>Planned</span>
+          <input type="text" inputmode="decimal" id="bill-amount" placeholder="0.00">
+        </label>
+        <label class="field">
+          <span>Due day</span>
+          <select id="bill-day"></select>
+        </label>
+        <label class="field">
+          <span>Amount varies</span>
+          <input type="checkbox" class="switch" id="bill-variable">
+        </label>
+        <label class="field">
+          <span>Envelope</span>
+          <input type="checkbox" class="switch" id="bill-envelope">
+        </label>
+      </div>
+      <p class="note" id="bill-hint" hidden></p>
+
+      <!-- Entering what a variable bill actually came to -->
+      <div class="field-group" id="fields-pay" hidden>
+        <label class="field">
+          <span>Actual amount</span>
+          <input type="text" inputmode="decimal" id="pay-amount" placeholder="0.00">
+        </label>
+        <label class="field">
+          <span>Note</span>
+          <input type="text" id="pay-note" placeholder="Optional" autocomplete="off">
+        </label>
+      </div>
+      <p class="note" id="pay-hint" hidden></p>
+
+      <!-- Debt balance adjustment -->
+      <div class="field-group" id="fields-adjust" hidden>
+        <div class="field">
+          <div class="segmented" id="adjust-mode">
+            <button type="button" class="seg active" data-mode="charge">Charge</button>
+            <button type="button" class="seg" data-mode="payment">Payment</button>
+            <button type="button" class="seg" data-mode="set">Set to</button>
+          </div>
+        </div>
+        <label class="field">
+          <span id="adjust-amount-label">Amount</span>
+          <input type="text" inputmode="decimal" id="adjust-amount" placeholder="0.00">
+        </label>
+        <label class="field">
+          <span>Reason</span>
+          <input type="text" id="adjust-reason" placeholder="Interest charge" autocomplete="off">
+        </label>
+      </div>
+      <p class="note" id="adjust-hint" hidden></p>
+
+      <!-- Bills account correction -->
+      <div class="field-group" id="fields-account" hidden>
+        <div class="field">
+          <div class="segmented" id="account-mode">
+            <button type="button" class="seg active" data-amode="in">Money in</button>
+            <button type="button" class="seg" data-amode="out">Money out</button>
+            <button type="button" class="seg" data-amode="set">Set to</button>
+          </div>
+        </div>
+        <label class="field">
+          <span id="account-amount-label">Amount</span>
+          <input type="text" inputmode="decimal" id="account-amount" placeholder="0.00">
+        </label>
+        <label class="field">
+          <span>Note</span>
+          <input type="text" id="account-note" placeholder="Bank fee" autocomplete="off">
+        </label>
+      </div>
+      <p class="note" id="account-hint" hidden></p>
+
+      <!-- Weekly transfer amount -->
+      <div class="field-group" id="fields-transfer" hidden>
+        <label class="field">
+          <span>Weekly amount</span>
+          <input type="text" inputmode="decimal" id="transfer-input" placeholder="484">
+        </label>
+      </div>
+      <p class="note" id="transfer-hint" hidden>
+        How much you move into the Bills account each Thursday. Changing it
+        doesn't move any money by itself.
+      </p>
+
+      <p class="form-error" id="form-error" hidden></p>
+
+      <button type="button" class="delete-btn" id="sheet-delete" hidden>Delete</button>
+    </form>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

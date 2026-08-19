@@ -1,0 +1,6 @@
+# Build output — regenerated from the source files, no need to track
+dist/
+budget-app.zip
+
+# macOS
+.DS_Store
