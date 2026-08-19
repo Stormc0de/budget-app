@@ -52,7 +52,16 @@ const DEFAULT_SETTINGS = {
   weeklyTransfer: 484,      // the Thursday transfer amount
   lastPaycheckWeek: null,   // which week you last ticked "Got paid"
   lastTransferWeek: null,   // which week you last ticked the transfer
-  lastTransferAmount: 0     // what that transfer was, so undo is exact
+  lastTransferAmount: 0,    // what that transfer was, so undo is exact
+
+  // Avalanche: the extra you put on your highest-interest debt each week
+  avalancheExtra: 0,
+  lastAvalancheWeek: null,
+  lastAvalanchePayment: null,   // { cardId, amount } so undo is exact
+
+  // Week sections you have folded shut on the Week screen. Anything
+  // past next week starts folded, to keep the glance view short.
+  collapsedWeeks: ['week2', 'week3', 'later', 'done']
 };
 
 let cards    = load(CARDS_KEY);
@@ -168,6 +177,14 @@ const CATEGORIES = [
 // Anything without a category (bills saved before this existed) is a bill.
 const billCategory = bill => (bill.category === 'debt' ? 'debt' : 'bill');
 
+/* The Bills tab is a master list, so it reads in fixed calendar order:
+   1st, 3rd, 12th … then last-day bills, then undated ones. Unlike the
+   Week screen this does not rotate as the month goes on. */
+function sortByDayOfMonth(list) {
+  const rank = b => b.day === 'any' ? 999 : (b.day === 'last' ? 32 : b.day);
+  return [...list].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+}
+
 // Soonest due first; bills with no fixed date go last.
 function sortByDue(list) {
   return [...list].sort((a, b) => {
@@ -182,9 +199,9 @@ function sortByDue(list) {
 /* Builds a list split into its categories, given a function that draws
    one row. The headings only appear when there is more than one group
    to tell apart, so a single-category list stays uncluttered. */
-function groupedHtml(rowHtml) {
+function groupedHtml(rowHtml, sorter = sortByDue) {
   const groups = CATEGORIES
-    .map(cat => ({ cat, items: sortByDue(bills.filter(b => billCategory(b) === cat.key)) }))
+    .map(cat => ({ cat, items: sorter(bills.filter(b => billCategory(b) === cat.key)) }))
     .filter(group => group.items.length);
 
   const headings = groups.length > 1;
@@ -192,6 +209,103 @@ function groupedHtml(rowHtml) {
     (headings ? `<h3 class="group-title">${group.cat.label}</h3>` : '') +
     group.items.map(rowHtml).join('')
   ).join('');
+}
+
+/* ---------- 3b. Sorting the Week screen into weeks -------- */
+
+/* Your weeks run Thursday to Wednesday, same as the ritual, so a bill
+   lands in the week you would actually fund it. Order matters here —
+   it is the order the sections appear in. */
+const BUCKET_ORDER = ['overdue', 'week0', 'week1', 'week2', 'week3',
+                      'later', 'undated', 'done'];
+
+function weekBucket(bill, weekStart) {
+  if (isPaid(bill))        return 'done';      // dealt with; out of the way
+  if (bill.day === 'any')  return 'undated';   // envelopes, no due date
+  if (isOverdue(bill))     return 'overdue';   // needs attention first
+
+  const due = nextDueDate(bill);
+  if (!due) return 'undated';
+
+  // how many whole weeks past this week's Thursday the due date falls
+  const index = Math.floor((due - weekStart) / (7 * DAY_MS));
+  if (index <= 0) return 'week0';
+  if (index === 1) return 'week1';
+  if (index === 2) return 'week2';
+  if (index === 3) return 'week3';
+  return 'later';
+}
+
+function bucketLabel(key, weekStart) {
+  const day = d => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const startOf = index => {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + index * 7);
+    return d;
+  };
+  const range = index => {
+    const a = startOf(index);
+    const b = new Date(a);
+    b.setDate(b.getDate() + 6);
+    return day(a) + ' – ' + day(b);
+  };
+
+  if (key === 'overdue') return 'Overdue';
+  if (key === 'week0')   return 'This week · ' + range(0);
+  if (key === 'week1')   return 'Next week · ' + range(1);
+  if (key === 'week2')   return 'Week of ' + day(startOf(2));
+  if (key === 'week3')   return 'Week of ' + day(startOf(3));
+  if (key === 'later')   return 'Later';
+  if (key === 'undated') return 'No fixed date';
+  return 'Paid this month';
+}
+
+const isCollapsed = key => (settings.collapsedWeeks || []).includes(key);
+
+function toggleWeekSection(key) {
+  const list = settings.collapsedWeeks || [];
+  settings.collapsedWeeks = list.includes(key)
+    ? list.filter(k => k !== key)
+    : list.concat(key);
+  save(SETTINGS_KEY, settings);
+  renderWeek();
+}
+
+/* Same idea as groupedHtml, but split into weeks and foldable. Each
+   heading keeps showing its count and total while folded, so nothing
+   disappears without a trace. */
+function weekGroupedHtml(rowHtml) {
+  const weekStart = new Date(currentWeek() + 'T00:00:00');
+
+  const buckets = {};
+  bills.forEach(bill => {
+    const key = weekBucket(bill, weekStart);
+    (buckets[key] = buckets[key] || []).push(bill);
+  });
+
+  return BUCKET_ORDER.map(key => {
+    const items = buckets[key];
+    if (!items || !items.length) return '';
+
+    const sorted = sortByDue(items);
+    const collapsed = isCollapsed(key);
+    const unpaid = sorted.filter(b => !isPaid(b));
+    const total = round2(unpaid.reduce((sum, b) => sum + b.amount, 0));
+
+    const summary = key === 'done'
+      ? sorted.length + ' paid'
+      : (unpaid.length ? fmt(total) : 'all paid');
+
+    return `
+      <button class="week-head ${collapsed ? 'closed' : ''} ${key === 'overdue' ? 'urgent' : ''}"
+              data-week="${key}">
+        <span class="week-chev">›</span>
+        <span class="week-name">${bucketLabel(key, weekStart)}</span>
+        <span class="week-count">${sorted.length}</span>
+        <span class="week-sum">${summary}</span>
+      </button>` +
+      (collapsed ? '' : sorted.map(rowHtml).join(''));
+  }).join('');
 }
 
 // Both checkmarks are stamped with a month, so they clear on the 1st.
@@ -350,6 +464,78 @@ function toggleTransfer() {
   renderAll();
 }
 
+/* ---------- 5b. Avalanche extra payment ------------------- */
+
+/* The avalanche method: pay every minimum, then throw all spare money
+   at the single highest-interest debt. So the target is simply the debt
+   with the highest rate that still has a balance. It changes by itself
+   as debts get cleared. */
+function avalancheTarget() {
+  const withBalance = cards.filter(c => c.balance > 0);
+  if (!withBalance.length) return null;
+  return withBalance.reduce((best, c) => (c.apr > best.apr ? c : best), withBalance[0]);
+}
+
+const avalancheDoneThisWeek = () => settings.lastAvalancheWeek === currentWeek();
+
+/* Ticking this moves real money: the debt balance goes down AND the
+   same amount leaves the Bills account. Because the extra was never
+   funded into an envelope, it comes straight out of the free cushion —
+   which is exactly what spending unclaimed money should do. */
+function toggleAvalanche() {
+  if (avalancheDoneThisWeek()) {
+    const record = settings.lastAvalanchePayment;
+    if (record) {
+      const card = cards.find(c => c.id === record.cardId);
+      if (card) {
+        card.balance = round2(card.balance + record.amount);
+        if (!card.history) card.history = [];
+        card.history.push({
+          id: newId(), at: new Date().toISOString(),
+          delta: record.amount, balanceAfter: card.balance,
+          reason: 'Avalanche payment undone'
+        });
+        save(CARDS_KEY, cards);
+      }
+      // and the money comes back into the account
+      accountEntry(record.amount, 'Avalanche payment undone');
+    }
+    settings.lastAvalancheWeek = null;
+    settings.lastAvalanchePayment = null;
+    save(SETTINGS_KEY, settings);
+    return renderAll();
+  }
+
+  const target = avalancheTarget();
+  if (!target) {
+    alert('Add a debt with a balance on the Debts tab first.');
+    return;
+  }
+
+  const amount = settings.avalancheExtra;
+  if (amount <= 0) {
+    // no amount set yet — ask for one instead of silently doing nothing
+    return openSheet('avalanche', null);
+  }
+
+  target.balance = round2(target.balance - amount);
+  if (!target.history) target.history = [];
+  target.history.push({
+    id: newId(), at: new Date().toISOString(),
+    delta: -amount, balanceAfter: target.balance,
+    reason: 'Avalanche extra payment'
+  });
+  save(CARDS_KEY, cards);
+
+  // the money actually leaves the account
+  accountEntry(-amount, 'Avalanche extra to ' + target.name);
+
+  settings.lastAvalancheWeek = currentWeek();
+  settings.lastAvalanchePayment = { cardId: target.id, amount };
+  save(SETTINGS_KEY, settings);
+  renderAll();
+}
+
 /* The banner at the top of the Week screen. Worst news wins. */
 function weekStatus() {
   const cushion = freeCushion();
@@ -440,8 +626,24 @@ function renderWeek() {
     : 'Tap the circle once the money has moved';
   $('transfer-amount').textContent = fmt(settings.weeklyTransfer);
 
-  // fund & pay list, grouped by category, soonest due first
-  $('week-bills').innerHTML = groupedHtml(b => {
+  // avalanche row — hidden entirely when there is no debt to target
+  const target = avalancheTarget();
+  const done = avalancheDoneThisWeek();
+  $('row-avalanche').hidden = !target;
+
+  if (target) {
+    document.querySelector('[data-ritual="avalanche"]').classList.toggle('on', done);
+    $('avalanche-title').textContent = 'Extra to ' + target.name;
+    $('avalanche-amount').textContent = fmt(settings.avalancheExtra);
+    $('avalanche-sub').textContent = settings.avalancheExtra <= 0
+      ? 'Tap to set your weekly extra'
+      : (done
+          ? 'Paid this week · balance now ' + fmt(target.balance)
+          : `Highest rate at ${target.apr.toFixed(2)}% · tap the circle when paid`);
+  }
+
+  // fund & pay list, split into weeks by due date
+  $('week-bills').innerHTML = weekGroupedHtml(b => {
     const funded = isFunded(b), paid = isPaid(b);
     const banked = b.balance > 0 ? ` · ${fmt(b.balance)} banked` : '';
     const overdue = isOverdue(b);
@@ -456,10 +658,10 @@ function renderWeek() {
         </div>
         <div class="chips">
           <button class="chip ${funded ? 'on-fund' : ''}" data-fund="${b.id}">
-            ${funded ? 'Funded' : 'Fund'}
+            ${funded ? '✓&nbsp;Funded' : 'Fund'}
           </button>
           <button class="chip ${paid ? 'on-paid' : ''}" data-pay="${b.id}">
-            ${paid ? 'Paid' : 'Pay'}
+            ${paid ? '✓&nbsp;Paid' : 'Pay'}
           </button>
         </div>
       </div>`;
@@ -471,12 +673,19 @@ function renderWeek() {
 /* ---------- 7. Rendering: Bills list and one bill --------- */
 
 function renderBills() {
-  $('bills-list').innerHTML = groupedHtml(b => `
-      <button class="row" data-open-bill="${b.id}">
+  $('bills-list').innerHTML = groupedHtml(b => {
+    const paid = isPaid(b), funded = isFunded(b);
+    // where this month stands, shown right on the master list
+    const state = paid   ? '<span class="tag-paid">✓ Paid</span>'
+                : funded ? '<span class="tag-funded">✓ Funded</span>'
+                : '';
+    return `
+      <button class="row ${paid ? 'paid' : ''}" data-open-bill="${b.id}">
         <div class="row-main">
           <div class="row-title">${esc(b.name)}</div>
           <div class="row-sub">
             ${dueLabel(b)}${b.envelope ? ' · envelope' : ''}${b.variable ? ' · varies' : ''}
+            ${state}
           </div>
         </div>
         <div class="row-right">
@@ -484,14 +693,16 @@ function renderBills() {
           ${b.balance > 0 ? `<div class="banked">${fmt(b.balance)} banked</div>` : ''}
         </div>
         <div class="chevron">›</div>
-      </button>`);
+      </button>`;
+  }, sortByDayOfMonth);
 
   $('bills-empty').hidden = bills.length > 0;
 
   const monthlyTotal = round2(bills.reduce((sum, b) => sum + b.amount, 0));
   const banked = round2(bills.reduce((sum, b) => sum + Math.max(0, b.balance), 0));
+  const unpaidCount = bills.filter(b => !isPaid(b)).length;
   $('bills-summary').textContent = bills.length
-    ? `${fmt(monthlyTotal)} planned each month · ${fmt(banked)} banked`
+    ? `${fmt(monthlyTotal)} a month · ${unpaidCount} of ${bills.length} unpaid · ${fmt(banked)} banked`
     : '';
 }
 
@@ -649,7 +860,7 @@ document.querySelectorAll('.tab').forEach(tab => {
 
 let editing = { type: 'bill', id: null };
 
-const SHEET_GROUPS = ['card', 'bill', 'pay', 'adjust', 'account', 'transfer'];
+const SHEET_GROUPS = ['card', 'bill', 'pay', 'adjust', 'account', 'transfer', 'avalanche'];
 
 function openSheet(type, id) {
   editing = { type, id };
@@ -661,7 +872,8 @@ function openSheet(type, id) {
     pay:      'Record Payment',
     adjust:   'Adjust Balance',
     account:  'Correct Balance',
-    transfer: 'Weekly Transfer'
+    transfer: 'Weekly Transfer',
+    avalanche: 'Avalanche Extra'
   };
   $('sheet-title').textContent = titles[type];
 
@@ -714,6 +926,15 @@ function openSheet(type, id) {
 
   } else if (type === 'transfer') {
     $('transfer-input').value = settings.weeklyTransfer;
+
+  } else if (type === 'avalanche') {
+    $('avalanche-input').value = settings.avalancheExtra || '';
+    const target = avalancheTarget();
+    $('avalanche-hint').textContent = target
+      ? `Goes to ${target.name}, your highest rate at ${target.apr.toFixed(2)}%. ` +
+        'The target moves on by itself once that debt is cleared. Ticking it off ' +
+        'lowers that debt and takes the same amount out of the Bills account.'
+      : 'Add a debt with a balance first.';
   }
 
   $('backdrop').hidden = false;
@@ -822,6 +1043,7 @@ function saveSheet() {
   if (type === 'adjust')   return saveAdjustment();
   if (type === 'account')  return saveAccountCorrection();
   if (type === 'transfer') return saveTransferAmount();
+  if (type === 'avalanche') return saveAvalancheAmount();
 }
 
 function saveCard() {
@@ -966,6 +1188,16 @@ function saveTransferAmount() {
   if (amount <= 0) return showError('Please enter an amount greater than zero.');
 
   settings.weeklyTransfer = round2(amount);
+  save(SETTINGS_KEY, settings);
+  closeSheet();
+  renderWeek();
+}
+
+function saveAvalancheAmount() {
+  const amount = toNumber($('avalanche-input').value);
+  if (amount <= 0) return showError('Please enter an amount greater than zero.');
+
+  settings.avalancheExtra = round2(amount);
   save(SETTINGS_KEY, settings);
   closeSheet();
   renderWeek();
@@ -1126,7 +1358,17 @@ function cleanSettings(obj) {
     weeklyTransfer: weekly > 0 ? weekly : DEFAULT_SETTINGS.weeklyTransfer,
     lastPaycheckWeek: weekStamp(obj.lastPaycheckWeek),
     lastTransferWeek: weekStamp(obj.lastTransferWeek),
-    lastTransferAmount: toNumber(obj.lastTransferAmount)
+    lastTransferAmount: toNumber(obj.lastTransferAmount),
+    avalancheExtra: toNumber(obj.avalancheExtra),
+    lastAvalancheWeek: weekStamp(obj.lastAvalancheWeek),
+    lastAvalanchePayment: (obj.lastAvalanchePayment &&
+                           typeof obj.lastAvalanchePayment === 'object')
+      ? { cardId: String(obj.lastAvalanchePayment.cardId || ''),
+          amount: toNumber(obj.lastAvalanchePayment.amount) }
+      : null,
+    collapsedWeeks: Array.isArray(obj.collapsedWeeks)
+      ? obj.collapsedWeeks.filter(k => BUCKET_ORDER.includes(k))
+      : DEFAULT_SETTINGS.collapsedWeeks.slice()
   };
 }
 
@@ -1186,6 +1428,7 @@ $('bill-edit-btn').addEventListener('click', () => openSheet('bill', openBillId)
 $('account-open').addEventListener('click', () => { renderAccount(); showScreen('account'); });
 $('account-adjust-btn').addEventListener('click', () => openSheet('account', null));
 $('edit-transfer').addEventListener('click', () => openSheet('transfer', null));
+$('edit-avalanche').addEventListener('click', () => openSheet('avalanche', null));
 
 $('sheet-cancel').addEventListener('click', closeSheet);
 $('backdrop').addEventListener('click', closeSheet);
@@ -1242,9 +1485,15 @@ document.addEventListener('click', e => {
     return payBill(b.id, b.amount, `Paid ${fmt(b.amount)}`);
   }
 
+  const week = e.target.closest('[data-week]');
+  if (week) return toggleWeekSection(week.dataset.week);
+
   const ritual = e.target.closest('[data-ritual]');
   if (ritual) {
-    return ritual.dataset.ritual === 'paycheck' ? togglePaycheck() : toggleTransfer();
+    const which = ritual.dataset.ritual;
+    if (which === 'paycheck')  return togglePaycheck();
+    if (which === 'avalanche') return toggleAvalanche();
+    return toggleTransfer();
   }
 });
 

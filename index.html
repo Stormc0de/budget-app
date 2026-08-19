@@ -72,6 +72,15 @@
           </button>
           <div class="row-amount" id="transfer-amount"></div>
         </div>
+        <!-- Only shown when you have a debt with a balance to target -->
+        <div class="row" id="row-avalanche" hidden>
+          <button class="check" data-ritual="avalanche" aria-label="Mark the extra payment as made">✓</button>
+          <button class="row-main row-main-btn" id="edit-avalanche">
+            <div class="row-title" id="avalanche-title">Extra payment</div>
+            <div class="row-sub" id="avalanche-sub"></div>
+          </button>
+          <div class="row-amount" id="avalanche-amount"></div>
+        </div>
       </div>
 
       <h2 class="section-title">Fund &amp; pay</h2>
@@ -389,6 +398,15 @@
         How much you move into the Bills account each Thursday. Changing it
         doesn't move any money by itself.
       </p>
+
+      <!-- Weekly extra toward the highest-interest debt -->
+      <div class="field-group" id="fields-avalanche" hidden>
+        <label class="field">
+          <span>Weekly extra</span>
+          <input type="text" inputmode="decimal" id="avalanche-input" placeholder="0.00">
+        </label>
+      </div>
+      <p class="note" id="avalanche-hint" hidden></p>
 
       <p class="form-error" id="form-error" hidden></p>
 

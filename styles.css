@@ -359,6 +359,85 @@ body.scrolled .nav {
   border-radius: var(--r-pill);
 }
 
+/* ===========================================================
+   FOLDABLE WEEK HEADINGS on the Week screen
+   =========================================================== */
+.week-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 10px 2px 0;
+  padding: 4px 4px 6px;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.week-head:first-child { margin-top: 0; }
+.week-head:active { opacity: 0.55; }
+
+/* points down when open, right when folded shut */
+.week-chev {
+  display: inline-block;
+  font-size: 15px;
+  line-height: 1;
+  transform: rotate(90deg);
+  transition: transform 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.week-head.closed .week-chev { transform: rotate(0deg); }
+
+.week-name { flex: 1; min-width: 0; }
+
+/* how many bills are in this week, kept visible while folded */
+.week-count {
+  min-width: 20px;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  background: var(--fill-subtle);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.week-sum {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* overdue section shouts a little */
+.week-head.urgent,
+.week-head.urgent .week-sum { color: var(--red); }
+.week-head.urgent .week-count {
+  background: var(--red);
+  color: #fff;
+}
+
+/* Paid / funded tags on the Bills tab */
+.tag-paid,
+.tag-funded {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.tag-paid {
+  background: var(--green);
+  color: #fff;
+}
+.tag-funded {
+  background: var(--fill-subtle);
+  color: var(--tint);
+}
+/* the tag itself must never inherit the struck-through look */
+.row.paid .tag-paid { text-decoration: none; }
+
 /* Category heading inside a list */
 .group-title {
   margin: 8px 6px 0;
