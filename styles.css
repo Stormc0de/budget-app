@@ -50,6 +50,13 @@
   /* iOS 26 leans on larger, continuous corners. Nested corners are
      "concentric": an inner radius equals the outer one minus the gap
      between them, so the curves stay parallel. */
+  /* How far the floating tab bar sits off the bottom. In a home-screen
+     app env(safe-area-inset-bottom) is about 34px for the home indicator;
+     adding a gap on top of that pushed the bar visibly too high, so we
+     subtract instead. The max() keeps it sensible in a browser tab and
+     on older phones where the inset is 0. */
+  --bar-bottom: max(8px, calc(env(safe-area-inset-bottom) - 18px));
+
   --r-card:  20px;
   --r-inner: 12px;
   --r-sheet: 30px;
@@ -218,7 +225,7 @@ body.scrolled .nav {
 /* Bottom padding clears the floating tab bar, the + button and the
    home indicator, so the last row is never trapped underneath. */
 .content {
-  padding: 10px 16px calc(env(safe-area-inset-bottom) + 156px);
+  padding: 10px 16px calc(var(--bar-bottom) + 150px);
 }
 
 /* ===========================================================
@@ -227,7 +234,7 @@ body.scrolled .nav {
 .fab {
   position: fixed;
   right: 20px;
-  bottom: calc(env(safe-area-inset-bottom) + 92px);
+  bottom: calc(var(--bar-bottom) + 78px);
   z-index: 25;
   width: 58px;
   height: 58px;
@@ -622,7 +629,7 @@ body.scrolled .nav {
   position: fixed;
   left: 16px;
   right: 16px;
-  bottom: calc(env(safe-area-inset-bottom) + 12px);
+  bottom: var(--bar-bottom);
   z-index: 20;
   display: flex;
   padding: 6px;

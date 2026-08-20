@@ -725,7 +725,7 @@ function renderBillDetail() {
 
   const entries = [...(bill.history || [])].reverse();
   $('bill-history').innerHTML = entries.map(h => `
-    <div class="row">
+    <button class="row" data-entry="bill|${bill.id}|${h.id}">
       <div class="row-main">
         <div class="row-title">${esc(h.reason)}</div>
         <div class="row-sub">${shortDate(h.at)} · envelope ${fmt(h.balanceAfter)}</div>
@@ -733,7 +733,8 @@ function renderBillDetail() {
       <div class="hist-amount ${h.delta >= 0 ? 'down' : 'up'}">
         ${h.delta >= 0 ? '+' : '−'}${fmt(Math.abs(h.delta))}
       </div>
-    </div>`).join('');
+      <div class="chevron">›</div>
+    </button>`).join('');
 
   $('bill-history-empty').hidden = entries.length > 0;
 }
@@ -752,7 +753,7 @@ function renderAccount() {
 
   const entries = [...account.history].reverse();
   $('account-history').innerHTML = entries.map(h => `
-    <div class="row">
+    <button class="row" data-entry="account|account|${h.id}">
       <div class="row-main">
         <div class="row-title">${esc(h.reason)}</div>
         <div class="row-sub">${shortDate(h.at)} · balance ${fmt(h.balanceAfter)}</div>
@@ -760,7 +761,8 @@ function renderAccount() {
       <div class="hist-amount ${h.delta >= 0 ? 'down' : 'up'}">
         ${h.delta >= 0 ? '+' : '−'}${fmt(Math.abs(h.delta))}
       </div>
-    </div>`).join('');
+      <div class="chevron">›</div>
+    </button>`).join('');
 
   $('account-history-empty').hidden = entries.length > 0;
 }
@@ -807,7 +809,7 @@ function renderCardDetail() {
 
   const entries = [...(c.history || [])].reverse();
   $('history-list').innerHTML = entries.map(h => `
-    <div class="row">
+    <button class="row" data-entry="card|${c.id}|${h.id}">
       <div class="row-main">
         <div class="row-title">${esc(h.reason)}</div>
         <div class="row-sub">${shortDate(h.at)} · balance ${fmt(h.balanceAfter)}</div>
@@ -815,7 +817,8 @@ function renderCardDetail() {
       <div class="hist-amount ${h.delta >= 0 ? 'up' : 'down'}">
         ${h.delta >= 0 ? '+' : '−'}${fmt(Math.abs(h.delta))}
       </div>
-    </div>`).join('');
+      <div class="chevron">›</div>
+    </button>`).join('');
 
   $('history-empty').hidden = entries.length > 0;
 }
@@ -860,7 +863,8 @@ document.querySelectorAll('.tab').forEach(tab => {
 
 let editing = { type: 'bill', id: null };
 
-const SHEET_GROUPS = ['card', 'bill', 'pay', 'adjust', 'account', 'transfer', 'avalanche'];
+const SHEET_GROUPS = ['card', 'bill', 'pay', 'adjust', 'account', 'transfer',
+                      'avalanche', 'entry'];
 
 function openSheet(type, id) {
   editing = { type, id };
@@ -873,7 +877,8 @@ function openSheet(type, id) {
     adjust:   'Adjust Balance',
     account:  'Correct Balance',
     transfer: 'Weekly Transfer',
-    avalanche: 'Avalanche Extra'
+    avalanche: 'Avalanche Extra',
+    entry: 'Edit Entry'
   };
   $('sheet-title').textContent = titles[type];
 
@@ -884,8 +889,9 @@ function openSheet(type, id) {
     if (hint) hint.hidden = group !== type;
   });
 
-  // Delete only makes sense for an existing bill or debt
-  $('sheet-delete').hidden = isNew || (type !== 'card' && type !== 'bill');
+  // Delete applies to an existing bill, debt, or history entry
+  $('sheet-delete').hidden = isNew ||
+    (type !== 'card' && type !== 'bill' && type !== 'entry');
   $('form-error').hidden = true;
 
   if (type === 'card') {
@@ -926,6 +932,18 @@ function openSheet(type, id) {
 
   } else if (type === 'transfer') {
     $('transfer-input').value = settings.weeklyTransfer;
+
+  } else if (type === 'entry') {
+    const found = findEntry(id);
+    if (!found) return;
+    $('entry-amount').value = found.entry.delta;
+    $('entry-note').value = found.entry.reason;
+    const what = found.kind === 'account' ? 'the Bills account balance'
+               : found.kind === 'bill'    ? "this envelope's balance"
+               : "this debt's balance";
+    $('entry-hint').textContent =
+      `Changing the amount adjusts ${what} by the difference. A minus sign ` +
+      'means money going out. Every figure below this entry is recalculated.';
 
   } else if (type === 'avalanche') {
     $('avalanche-input').value = settings.avalancheExtra || '';
@@ -1044,6 +1062,7 @@ function saveSheet() {
   if (type === 'account')  return saveAccountCorrection();
   if (type === 'transfer') return saveTransferAmount();
   if (type === 'avalanche') return saveAvalancheAmount();
+  if (type === 'entry') return saveEntryEdit();
 }
 
 function saveCard() {
@@ -1204,6 +1223,8 @@ function saveAvalancheAmount() {
 }
 
 function deleteCurrent() {
+  if (editing.type === 'entry') return deleteEntry();
+
   const isCard = editing.type === 'card';
   const bill = isCard ? null : bills.find(b => b.id === editing.id);
 
@@ -1232,6 +1253,84 @@ function deleteCurrent() {
 
   if (isCard && openCardId === editing.id) { openCardId = null; showScreen('cards'); }
   if (!isCard && openBillId === editing.id) { openBillId = null; showScreen('bills'); }
+  renderAll();
+}
+
+/* ---------- 12b. Editing a history entry ------------------
+   Every history list — the Bills account, an envelope, a debt — can be
+   corrected. A row is referenced as "kind|ownerId|entryId". */
+
+function findEntry(ref) {
+  const [kind, ownerId, entryId] = String(ref).split('|');
+
+  let owner;
+  if (kind === 'account')   owner = account;
+  else if (kind === 'bill') owner = bills.find(b => b.id === ownerId);
+  else                      owner = cards.find(c => c.id === ownerId);
+
+  if (!owner || !Array.isArray(owner.history)) return null;
+  const entry = owner.history.find(h => h.id === entryId);
+  if (!entry) return null;
+
+  return { kind, owner, entry };
+}
+
+/* Once an amount changes, every "balance after" printed below it is
+   wrong. Rather than guess an opening figure, walk backwards from the
+   balance we know is right and refill them. */
+function recomputeRunning(history, finalBalance) {
+  let running = finalBalance;
+  for (let i = history.length - 1; i >= 0; i--) {
+    history[i].balanceAfter = round2(running);
+    running = round2(running - history[i].delta);
+  }
+}
+
+function persistOwner(kind) {
+  if (kind === 'account') save(ACCOUNT_KEY, account);
+  else if (kind === 'bill') save(BILLS_KEY, bills);
+  else save(CARDS_KEY, cards);
+}
+
+function applyEntryChange(found, difference) {
+  found.owner.balance = round2(found.owner.balance + difference);
+  recomputeRunning(found.owner.history, found.owner.balance);
+  persistOwner(found.kind);
+}
+
+function saveEntryEdit() {
+  const found = findEntry(editing.id);
+  if (!found) return closeSheet();
+
+  const typed = $('entry-amount').value.trim();
+  if (!typed) return showError('Please enter an amount.');
+
+  const newDelta = round2(toNumber(typed));
+  const difference = round2(newDelta - found.entry.delta);
+
+  found.entry.delta = newDelta;
+  found.entry.reason = $('entry-note').value.trim() || found.entry.reason;
+
+  applyEntryChange(found, difference);
+  closeSheet();
+  renderAll();
+}
+
+function deleteEntry() {
+  const found = findEntry(editing.id);
+  if (!found) return closeSheet();
+
+  const what = found.kind === 'account' ? 'the account balance'
+             : found.kind === 'bill'    ? 'this envelope'
+             : 'this debt';
+  if (!confirm(`Delete this entry? ${fmt(Math.abs(found.entry.delta))} will be ` +
+               `taken back out of ${what}.`)) return;
+
+  const index = found.owner.history.indexOf(found.entry);
+  found.owner.history.splice(index, 1);
+
+  applyEntryChange(found, -found.entry.delta);
+  closeSheet();
   renderAll();
 }
 
@@ -1484,6 +1583,9 @@ document.addEventListener('click', e => {
     if (b.amount <= 0) return alert('Give this bill a planned amount first.');
     return payBill(b.id, b.amount, `Paid ${fmt(b.amount)}`);
   }
+
+  const entryRow = e.target.closest('[data-entry]');
+  if (entryRow) return openSheet('entry', entryRow.dataset.entry);
 
   const week = e.target.closest('[data-week]');
   if (week) return toggleWeekSection(week.dataset.week);
