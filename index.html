@@ -280,6 +280,27 @@
         <div class="balance-value" id="card-balance-big">$0.00</div>
       </div>
 
+      <!-- Payoff projection. Uses APR, never touches the real balance. -->
+      <div class="balance-box payoff-box" id="payoff-box" hidden>
+        <div class="balance-label">Paid off in</div>
+        <div class="balance-value" id="payoff-months">—</div>
+        <div class="payoff-date" id="payoff-date"></div>
+        <div class="stat-row">
+          <div class="stat">
+            <div class="stat-label">Monthly payment</div>
+            <div class="stat-value" id="payoff-payment">$0.00</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Interest to come</div>
+            <div class="stat-value" id="payoff-interest">$0.00</div>
+          </div>
+        </div>
+      </div>
+      <p class="note" id="payoff-note" hidden></p>
+
+      <button class="big-btn" id="focus-btn">Make This the Focus</button>
+      <p class="note" id="focus-note" hidden></p>
+
       <button class="big-btn" id="adjust-btn">Adjust Balance</button>
 
       <h2 class="section-title">History</h2>

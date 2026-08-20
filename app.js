@@ -65,7 +65,10 @@ const DEFAULT_SETTINGS = {
   collapsedWeeks: ['week2', 'week3', 'later', 'done'],
 
   // Plan screen flags any week the projection dips below this
-  minReserve: 0
+  minReserve: 0,
+
+  // A debt you picked as the focus yourself. null = follow the avalanche rule.
+  focusCardId: null
 };
 
 let cards    = load(CARDS_KEY);
@@ -610,6 +613,11 @@ function logChange(label, from, to, reason) {
 function avalancheTarget() {
   const withBalance = cards.filter(c => c.balance > 0);
   if (!withBalance.length) return null;
+
+  // A debt you chose yourself wins, for as long as it still has a balance.
+  const chosen = withBalance.find(c => c.id === settings.focusCardId);
+  if (chosen) return chosen;
+
   return withBalance.reduce((best, c) => {
     if (c.apr > best.apr) return c;
     // same rate: clear the smaller balance first
@@ -619,6 +627,64 @@ function avalancheTarget() {
 }
 
 const avalancheDoneThisWeek = () => settings.lastAvalancheWeek === currentWeek();
+
+// Is the current focus one you picked, rather than the avalanche pick?
+function focusIsManual() {
+  const target = avalancheTarget();
+  return !!(target && settings.focusCardId === target.id);
+}
+
+// What the avalanche rule would choose if you had not picked anything.
+function avalancheRulePick() {
+  const withBalance = cards.filter(c => c.balance > 0);
+  if (!withBalance.length) return null;
+  return withBalance.reduce((best, c) => {
+    if (c.apr > best.apr) return c;
+    if (c.apr === best.apr && c.balance < best.balance) return c;
+    return best;
+  }, withBalance[0]);
+}
+
+function setFocus(cardId) {
+  settings.focusCardId = cardId;
+  save(SETTINGS_KEY, settings);
+  renderAll();
+}
+
+/* ---------- 5c. Payoff estimate ---------------------------
+   Projection only. This never writes to a balance — real figures always
+   come from your statement. Interest is charged monthly on the running
+   balance, and the payment is your minimum plus, for the focus debt,
+   your weekly extra converted at 4.33 paychecks a month. */
+
+const PAYCHECKS_PER_MONTH = 4.33;
+
+function payoffEstimate(card, monthlyExtra) {
+  if (card.balance <= 0) return { cleared: true };
+
+  const payment = round2(card.min + monthlyExtra);
+  if (payment <= 0) return { noPayment: true };
+
+  const monthlyRate = (card.apr / 100) / 12;
+  let balance = card.balance;
+  let interest = 0;
+  let months = 0;
+
+  while (balance > 0 && months < 600) {          // 50 years is "never"
+    const charge = round2(balance * monthlyRate);
+    // A payment that cannot even cover the interest never clears the debt
+    if (payment <= charge) return { never: true, interestPerMonth: charge, payment };
+    balance = round2(balance + charge - payment);
+    interest = round2(interest + charge);
+    months++;
+  }
+
+  if (months >= 600) return { never: true, payment };
+
+  const done = new Date();
+  done.setMonth(done.getMonth() + months);
+  return { months, interest, payment, date: done, cleared: false };
+}
 
 /* Ticking this moves real money: the debt balance goes down AND the
    same amount leaves the Bills account. Because the extra was never
@@ -988,10 +1054,15 @@ function renderLog() {
    and backup files call them. Only the on-screen wording is "Debts". */
 
 function renderCards() {
+  const target = avalancheTarget();
+
   $('cards-list').innerHTML = cards.map(c => `
-    <button class="row" data-open-card="${c.id}">
+    <button class="row ${target && target.id === c.id ? 'focus' : ''}" data-open-card="${c.id}">
       <div class="row-main">
-        <div class="row-title">${esc(c.name)}</div>
+        <div class="row-title">
+          ${esc(c.name)}
+          ${target && target.id === c.id ? '<span class="tag-focus">◎ Focus</span>' : ''}
+        </div>
         <div class="row-sub">${c.apr.toFixed(2)}% APR · Min ${fmt(c.min)}</div>
       </div>
       <div class="row-amount">${fmt(c.balance)}</div>
@@ -1023,6 +1094,9 @@ function renderCardDetail() {
   $('card-sub').textContent = `${c.apr.toFixed(2)}% APR · Min ${fmt(c.min)}`;
   $('card-balance-big').textContent = fmt(c.balance);
 
+  renderFocusControls(c);
+  renderPayoff(c);
+
   const entries = [...(c.history || [])].reverse();
   $('history-list').innerHTML = entries.map(h => `
     <button class="row" data-entry="card|${c.id}|${h.id}">
@@ -1037,6 +1111,101 @@ function renderCardDetail() {
     </button>`).join('');
 
   $('history-empty').hidden = entries.length > 0;
+}
+
+/* The focus button, plus a nudge if your pick is not the cheapest choice. */
+function renderFocusControls(card) {
+  const target = avalancheTarget();
+  const isTarget = !!(target && target.id === card.id);
+  const pinned = settings.focusCardId === card.id;
+
+  $('focus-btn').textContent = pinned ? 'Stop Focusing This' : 'Make This the Focus';
+
+  const rulePick = avalancheRulePick();
+  const note = $('focus-note');
+
+  if (pinned && rulePick && rulePick.id !== card.id) {
+    note.textContent = `You picked this one. The avalanche rule would target ` +
+      `${rulePick.name} at ${rulePick.apr.toFixed(2)}%, which costs less in interest overall.`;
+    note.hidden = false;
+  } else if (isTarget && !pinned) {
+    note.textContent = 'Chosen automatically: highest rate with a balance.';
+    note.hidden = false;
+  } else {
+    note.hidden = true;
+  }
+}
+
+function renderPayoff(card) {
+  const box = $('payoff-box');
+  const note = $('payoff-note');
+  const target = avalancheTarget();
+  const isTarget = !!(target && target.id === card.id);
+
+  // the weekly extra only goes to the focus debt
+  const monthlyExtra = isTarget
+    ? round2(settings.avalancheExtra * PAYCHECKS_PER_MONTH)
+    : 0;
+
+  const result = payoffEstimate(card, monthlyExtra);
+
+  if (result.cleared) {
+    box.hidden = true;
+    note.textContent = 'Cleared. Nothing left to pay off.';
+    note.hidden = false;
+    return;
+  }
+
+  if (result.noPayment) {
+    box.hidden = true;
+    note.textContent = 'Add a minimum payment to this debt and an estimate appears here.';
+    note.hidden = false;
+    return;
+  }
+
+  if (result.never) {
+    box.hidden = true;
+    note.textContent = result.interestPerMonth
+      ? `At ${fmt(result.payment)} a month this never clears — interest alone is about ` +
+        `${fmt(result.interestPerMonth)} a month. Raise the payment above that.`
+      : `At ${fmt(result.payment)} a month this takes over 50 years.`;
+    note.hidden = false;
+    return;
+  }
+
+  box.hidden = false;
+  const years = Math.floor(result.months / 12);
+  const rest = result.months % 12;
+  $('payoff-months').textContent = years
+    ? years + 'y ' + rest + 'm'
+    : result.months + (result.months === 1 ? ' month' : ' months');
+  $('payoff-date').textContent = 'around ' +
+    result.date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  $('payoff-payment').textContent = fmt(result.payment);
+  $('payoff-interest').textContent = fmt(result.interest);
+
+  // what the weekly extra is actually buying
+  if (isTarget && monthlyExtra > 0) {
+    const without = payoffEstimate(card, 0);
+    const lines = [
+      `${fmt(card.min)} minimum plus ${fmt(settings.avalancheExtra)} a week ` +
+      `(about ${fmt(monthlyExtra)} a month at 4.33 paychecks).`
+    ];
+    if (without.months && !without.never) {
+      const saved = without.months - result.months;
+      lines.push(`Without the extra: ${without.months} months and ` +
+                 `${fmt(without.interest)} interest — so the extra saves ` +
+                 `${saved} month${saved === 1 ? '' : 's'} and ` +
+                 `${fmt(round2(without.interest - result.interest))}.`);
+    } else if (without.never) {
+      lines.push('Without the extra the minimum alone never clears it.');
+    }
+    note.textContent = lines.join(' ');
+  } else {
+    note.textContent = `Based on the ${fmt(card.min)} minimum at ${card.apr.toFixed(2)}%. ` +
+      'Make this the focus and your weekly extra is included too.';
+  }
+  note.hidden = false;
 }
 
 function renderAll() {
@@ -1726,7 +1895,8 @@ function cleanSettings(obj) {
     collapsedWeeks: Array.isArray(obj.collapsedWeeks)
       ? obj.collapsedWeeks.filter(k => BUCKET_ORDER.includes(k))
       : DEFAULT_SETTINGS.collapsedWeeks.slice(),
-    minReserve: Math.max(0, toNumber(obj.minReserve))
+    minReserve: Math.max(0, toNumber(obj.minReserve)),
+    focusCardId: obj.focusCardId ? String(obj.focusCardId) : null
   };
 }
 
@@ -1783,6 +1953,9 @@ $('account-back').addEventListener('click', () => showScreen('week'));
 
 $('adjust-btn').addEventListener('click', () => openSheet('adjust', openCardId));
 $('edit-card-btn').addEventListener('click', () => openSheet('card', openCardId));
+$('focus-btn').addEventListener('click', () => {
+  setFocus(settings.focusCardId === openCardId ? null : openCardId);
+});
 $('bill-edit-btn').addEventListener('click', () => openSheet('bill', openBillId));
 
 $('account-open').addEventListener('click', () => { renderAccount(); showScreen('account'); });
