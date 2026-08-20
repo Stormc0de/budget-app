@@ -89,6 +89,83 @@
     </main>
   </section>
 
+  <!-- ============ PLAN: NEXT 9 PAYCHECKS ============ -->
+  <section class="screen" id="screen-plan" hidden>
+    <header class="nav">
+      <div class="nav-row">
+        <h1>Plan</h1>
+      </div>
+      <p class="nav-sub" id="plan-sub"></p>
+    </header>
+
+    <main class="content">
+      <!-- Everything is projected forward from this one real number -->
+      <button class="account-card" id="plan-anchor">
+        <div class="account-top">
+          <span class="account-label">Starting balance — your real figure</span>
+          <span class="chevron">›</span>
+        </div>
+        <div class="account-balance" id="plan-start">$0.00</div>
+        <div class="row-sub">Tap to correct it against your bank</div>
+      </button>
+
+      <h2 class="section-title">Nine paychecks</h2>
+      <div class="stat-row plan-summary">
+        <div class="stat">
+          <div class="stat-label">Transfers in</div>
+          <div class="stat-value" id="plan-in">$0.00</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Bills out</div>
+          <div class="stat-value" id="plan-out">$0.00</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Ending</div>
+          <div class="stat-value" id="plan-end">$0.00</div>
+        </div>
+      </div>
+
+      <div class="banner" id="plan-banner">
+        <div class="banner-title" id="plan-banner-title"></div>
+        <div class="banner-detail" id="plan-banner-detail"></div>
+      </div>
+
+      <div class="list">
+        <div class="row">
+          <button class="row-main row-main-btn" id="edit-reserve">
+            <div class="row-title">Minimum reserve</div>
+            <div class="row-sub">Flag any week that dips below this</div>
+          </button>
+          <div class="row-amount" id="plan-reserve">$0.00</div>
+        </div>
+      </div>
+
+      <h2 class="section-title">Week by week</h2>
+      <div class="list" id="plan-weeks"></div>
+      <p class="empty" id="plan-empty" hidden>Add some bills first.</p>
+
+      <button class="big-btn" id="open-log">Change Log</button>
+    </main>
+  </section>
+
+  <!-- ============ CHANGE LOG ============ -->
+  <section class="screen" id="screen-log" hidden>
+    <header class="nav">
+      <button class="back-btn" id="log-back">‹ Plan</button>
+      <div class="nav-row">
+        <h1>Change Log</h1>
+      </div>
+      <p class="nav-sub" id="log-sub"></p>
+    </header>
+
+    <main class="content">
+      <div class="list history" id="log-list"></div>
+      <p class="empty" id="log-empty" hidden>
+        Nothing yet. Change a bill's planned amount and you can note why.
+      </p>
+    </main>
+  </section>
+
   <!-- ============ BILLS ACCOUNT DETAIL ============ -->
   <section class="screen" id="screen-account" hidden>
     <header class="nav">
@@ -249,6 +326,13 @@
       </svg>
       <span>Week</span>
     </button>
+    <button class="tab" data-tab="plan">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 19V5M4 19h16" stroke-width="2"></path>
+        <path d="M8 16v-4M12 16V8M16 16v-6" stroke-width="2"></path>
+      </svg>
+      <span>Plan</span>
+    </button>
     <button class="tab" data-tab="bills">
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <rect x="4" y="3" width="16" height="18" rx="3"></rect>
@@ -330,6 +414,12 @@
         <label class="field">
           <span>Envelope</span>
           <input type="checkbox" class="switch" id="bill-envelope">
+        </label>
+        <!-- Only when editing: if the planned amount changes, this note
+             goes into the Change Log alongside the old and new figures. -->
+        <label class="field" id="bill-reason-row" hidden>
+          <span>Reason</span>
+          <input type="text" id="bill-reason" placeholder="Optional — why it changed" autocomplete="off">
         </label>
       </div>
       <p class="note" id="bill-hint" hidden></p>
@@ -420,6 +510,18 @@
         </label>
       </div>
       <p class="note" id="entry-hint" hidden></p>
+
+      <!-- Minimum reserve used by the Plan screen -->
+      <div class="field-group" id="fields-reserve" hidden>
+        <label class="field">
+          <span>Minimum reserve</span>
+          <input type="text" inputmode="decimal" id="reserve-input" placeholder="0.00">
+        </label>
+      </div>
+      <p class="note" id="reserve-hint" hidden>
+        The Plan screen flags any week where the projected balance falls below
+        this. Set it to what you want left in the account after every cycle.
+      </p>
 
       <p class="form-error" id="form-error" hidden></p>
 

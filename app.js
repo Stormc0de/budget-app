@@ -23,6 +23,7 @@ const CARDS_KEY       = 'budget.cards.v1';
 const BILLS_KEY       = 'budget.bills.v1';
 const ACCOUNT_KEY     = 'budget.account.v1';
 const SETTINGS_KEY    = 'budget.settings.v1';
+const CHANGELOG_KEY   = 'budget.changelog.v1';
 const LAST_EXPORT_KEY = 'budget.lastExport.v1';
 
 function load(key) {
@@ -61,13 +62,17 @@ const DEFAULT_SETTINGS = {
 
   // Week sections you have folded shut on the Week screen. Anything
   // past next week starts folded, to keep the glance view short.
-  collapsedWeeks: ['week2', 'week3', 'later', 'done']
+  collapsedWeeks: ['week2', 'week3', 'later', 'done'],
+
+  // Plan screen flags any week the projection dips below this
+  minReserve: 0
 };
 
 let cards    = load(CARDS_KEY);
 let bills    = load(BILLS_KEY);
 let account  = loadObject(ACCOUNT_KEY, { balance: 0, history: [] });
-let settings = loadObject(SETTINGS_KEY, DEFAULT_SETTINGS);
+let settings  = loadObject(SETTINGS_KEY, DEFAULT_SETTINGS);
+let changelog = load(CHANGELOG_KEY);
 
 /* ---------- 2. Small utilities ---------------------------- */
 
@@ -227,8 +232,11 @@ function weekBucket(bill, weekStart) {
   const due = nextDueDate(bill);
   if (!due) return 'undated';
 
-  // how many whole weeks past this week's Thursday the due date falls
-  const index = Math.floor((due - weekStart) / (7 * DAY_MS));
+  /* You fund a bill on the last Thursday strictly BEFORE it is due, so a
+     bill due on a Thursday is funded a full week earlier. Counting the
+     weeks with ceil()-1 instead of floor() shifts exactly those
+     Thursday-due bills back one week; everything else is unaffected. */
+  const index = Math.ceil((due - weekStart) / (7 * DAY_MS)) - 1;
   if (index <= 0) return 'week0';
   if (index === 1) return 'week1';
   if (index === 2) return 'week2';
@@ -250,11 +258,24 @@ function bucketLabel(key, weekStart) {
     return day(a) + ' – ' + day(b);
   };
 
+  /* A section is named for the Thursday you fund it on, and shows the
+     due dates that Thursday covers — the day after, through a week later. */
+  const covers = index => {
+    const from = startOf(index); from.setDate(from.getDate() + 1);
+    const to   = startOf(index); to.setDate(to.getDate() + 7);
+    return day(from) + ' – ' + day(to);
+  };
+
   if (key === 'overdue') return 'Overdue';
-  if (key === 'week0')   return 'This week · ' + range(0);
-  if (key === 'week1')   return 'Next week · ' + range(1);
-  if (key === 'week2')   return 'Week of ' + day(startOf(2));
-  if (key === 'week3')   return 'Week of ' + day(startOf(3));
+  /* "through" rather than a range: this section also catches anything due
+     today or already funded-late, which a start date would exclude. */
+  if (key === 'week0') {
+    const to = startOf(0); to.setDate(to.getDate() + 7);
+    return 'Fund now · due through ' + day(to);
+  }
+  if (key === 'week1')   return 'Fund ' + day(startOf(1)) + ' · due ' + covers(1);
+  if (key === 'week2')   return 'Fund ' + day(startOf(2)) + ' · due ' + covers(2);
+  if (key === 'week3')   return 'Fund ' + day(startOf(3)) + ' · due ' + covers(3);
   if (key === 'later')   return 'Later';
   if (key === 'undated') return 'No fixed date';
   return 'Paid this month';
@@ -464,6 +485,122 @@ function toggleTransfer() {
   renderAll();
 }
 
+/* ---------- 4b. Projecting the next nine paychecks --------
+
+   Everything here is arithmetic on top of ONE real number: the Bills
+   account balance you maintain yourself. Nothing is inferred from past
+   activity, so correcting your balance re-bases the whole projection. */
+
+const PROJECTION_WEEKS = 9;
+
+// Thursday is payday, so the first Thursday of a month is the paycheck
+// that carries that month's undated envelopes.
+function firstThursdayOfMonth(year, month) {
+  const d = new Date(year, month, 1);
+  d.setDate(1 + ((RITUAL_DAY - d.getDay() + 7) % 7));
+  return d;
+}
+
+/* When does this bill next fall due inside (from, to]? Bills repeat every
+   month, so only the one or two months the window touches can contain it. */
+function dueDatesInWindow(bill, from, to) {
+  if (bill.day === 'any') return [];
+
+  const months = [new Date(from.getFullYear(), from.getMonth(), 1)];
+  if (to.getMonth() !== from.getMonth() || to.getFullYear() !== from.getFullYear()) {
+    months.push(new Date(to.getFullYear(), to.getMonth(), 1));
+  }
+
+  return months
+    .map(m => new Date(m.getFullYear(), m.getMonth(), resolveDueDay(bill, m)))
+    .filter(d => d > from && d <= to);
+}
+
+/* Which bills a given payday funds: everything due between the day after
+   it and the following Thursday, plus the month's envelopes if this is
+   the first Thursday of the month. */
+function billsFundedOn(payday, isCurrentCycle) {
+  const windowEnd = new Date(payday);
+  windowEnd.setDate(windowEnd.getDate() + 7);
+
+  const first = firstThursdayOfMonth(payday.getFullYear(), payday.getMonth());
+  const carriesEnvelopes = payday.getTime() === first.getTime();
+
+  return bills.filter(bill => {
+    // Money for an already-paid bill has physically left the account, so
+    // in the cycle you are standing in it must not be counted again.
+    if (isCurrentCycle && isPaid(bill)) return false;
+
+    if (bill.day === 'any') return carriesEnvelopes;
+
+    /* In the cycle you are standing in, also sweep up anything still
+       unpaid that was due earlier or is due today. Its funding Thursday
+       has passed, but the money has not actually left yet — leaving it
+       out would make every week after this one read too rich. */
+    if (isCurrentCycle) {
+      const dueThisMonth = new Date(payday.getFullYear(), payday.getMonth(),
+                                    resolveDueDay(bill, payday));
+      if (dueThisMonth <= windowEnd) return true;
+    }
+
+    return dueDatesInWindow(bill, payday, windowEnd).length > 0;
+  });
+}
+
+function projectPaychecks(count = PROJECTION_WEEKS) {
+  const firstPayday = new Date(currentWeek() + 'T00:00:00');
+  let balance = account.balance;          // the anchor: your real figure
+  const weeks = [];
+
+  for (let i = 0; i < count; i++) {
+    const payday = new Date(firstPayday);
+    payday.setDate(payday.getDate() + i * 7);
+
+    // This week's transfer may already be sitting in the balance
+    const transfer = (i === 0 && transferredThisWeek()) ? 0 : settings.weeklyTransfer;
+
+    // The avalanche extra leaves the account weekly too, so the
+    // projection has to carry it or every week reads too rich.
+    const extra = (i === 0 && avalancheDoneThisWeek())
+      ? 0
+      : (avalancheTarget() ? settings.avalancheExtra : 0);
+
+    const due = billsFundedOn(payday, i === 0);
+    const billTotal = round2(due.reduce((sum, b) => sum + b.amount, 0));
+
+    const opening = balance;
+    balance = round2(opening + transfer - billTotal - extra);
+
+    weeks.push({
+      payday, opening, transfer, extra, bills: due, billTotal,
+      closing: balance,
+      short: balance < settings.minReserve,
+      shortBy: balance < settings.minReserve ? round2(settings.minReserve - balance) : 0
+    });
+  }
+
+  return {
+    weeks,
+    totalIn:    round2(weeks.reduce((s, w) => s + w.transfer, 0)),
+    totalBills: round2(weeks.reduce((s, w) => s + w.billTotal, 0)),
+    totalExtra: round2(weeks.reduce((s, w) => s + w.extra, 0)),
+    ending:     weeks.length ? weeks[weeks.length - 1].closing : account.balance,
+    firstShort: weeks.find(w => w.short) || null
+  };
+}
+
+/* ---------- 4c. The change log ---------------------------- */
+
+function logChange(label, from, to, reason) {
+  changelog.push({
+    id: newId(),
+    at: new Date().toISOString(),
+    label, from, to,
+    reason: reason || ''
+  });
+  save(CHANGELOG_KEY, changelog);
+}
+
 /* ---------- 5b. Avalanche extra payment ------------------- */
 
 /* The avalanche method: pay every minimum, then throw all spare money
@@ -473,7 +610,12 @@ function toggleTransfer() {
 function avalancheTarget() {
   const withBalance = cards.filter(c => c.balance > 0);
   if (!withBalance.length) return null;
-  return withBalance.reduce((best, c) => (c.apr > best.apr ? c : best), withBalance[0]);
+  return withBalance.reduce((best, c) => {
+    if (c.apr > best.apr) return c;
+    // same rate: clear the smaller balance first
+    if (c.apr === best.apr && c.balance < best.balance) return c;
+    return best;
+  }, withBalance[0]);
 }
 
 const avalancheDoneThisWeek = () => settings.lastAvalancheWeek === currentWeek();
@@ -540,12 +682,10 @@ function toggleAvalanche() {
 function weekStatus() {
   const cushion = freeCushion();
 
-  // bills with a real due date landing in the next 7 days, still unpaid
-  const soon = bills.filter(b => {
-    if (isPaid(b)) return false;
-    const days = daysUntilDue(b);
-    return days !== null && days <= 7;
-  });
+  /* Exactly the bills sitting under "Fund now", so the warning can never
+     disagree with the list underneath it. */
+  const weekStart = new Date(currentWeek() + 'T00:00:00');
+  const soon = bills.filter(b => weekBucket(b, weekStart) === 'week0');
 
   const shortfall = round2(soon
     .filter(b => !isFunded(b))
@@ -767,6 +907,82 @@ function renderAccount() {
   $('account-history-empty').hidden = entries.length > 0;
 }
 
+/* ---------- 8b. Rendering: the Plan screen ---------------- */
+
+function renderPlan() {
+  const p = projectPaychecks();
+  const dayLabel = d => d.toLocaleDateString(undefined,
+    { weekday: 'short', month: 'short', day: 'numeric' });
+
+  $('plan-sub').textContent = 'Next ' + PROJECTION_WEEKS + ' paychecks';
+  $('plan-start').textContent = fmt(account.balance);
+  $('plan-in').textContent    = fmt(p.totalIn);
+  $('plan-out').textContent   = fmt(round2(p.totalBills + p.totalExtra));
+  $('plan-end').textContent   = fmt(p.ending);
+  $('plan-end').className     = 'stat-value' + (p.ending < settings.minReserve ? ' negative' : '');
+  $('plan-reserve').textContent = fmt(settings.minReserve);
+
+  // headline verdict
+  const banner = $('plan-banner');
+  if (p.firstShort) {
+    banner.className = 'banner bad';
+    $('plan-banner-title').textContent =
+      'Short ' + fmt(p.firstShort.shortBy) + ' on ' + dayLabel(p.firstShort.payday);
+    $('plan-banner-detail').textContent =
+      'That cycle needs ' + fmt(p.firstShort.billTotal) + ' and the balance only reaches ' +
+      fmt(p.firstShort.closing) + '. Everything after it is worse unless something changes.';
+  } else {
+    banner.className = 'banner good';
+    $('plan-banner-title').textContent = 'All nine paychecks cover their bills';
+    $('plan-banner-detail').textContent =
+      'Lowest point is ' + fmt(Math.min(...p.weeks.map(w => w.closing))) +
+      ', ending at ' + fmt(p.ending) + '.';
+  }
+
+  $('plan-weeks').innerHTML = p.weeks.map((w, i) => {
+    const names = w.bills.length
+      ? w.bills.map(b => esc(b.name) + ' ' + fmt(b.amount)).join(' · ')
+      : 'Nothing due this cycle';
+
+    return `
+      <div class="plan-week ${w.short ? 'short' : ''}">
+        <div class="plan-top">
+          <span class="plan-date">${dayLabel(w.payday)}${i === 0 ? ' · now' : ''}</span>
+          <span class="plan-close">${fmt(w.closing)}</span>
+        </div>
+        <div class="plan-flow">
+          <span class="in">+${fmt(w.transfer)} in</span>
+          <span class="out">−${fmt(w.billTotal)} bills</span>
+          ${w.extra > 0 ? `<span class="out">−${fmt(w.extra)} extra</span>` : ''}
+        </div>
+        <div class="plan-bills">${names}</div>
+        ${w.short ? `<div class="plan-warn">Short ${fmt(w.shortBy)} against your ${fmt(settings.minReserve)} reserve</div>` : ''}
+      </div>`;
+  }).join('');
+
+  $('plan-empty').hidden = bills.length > 0;
+}
+
+function renderLog() {
+  const entries = [...changelog].reverse();
+  $('log-sub').textContent = entries.length
+    ? entries.length + (entries.length === 1 ? ' change' : ' changes')
+    : '';
+
+  $('log-list').innerHTML = entries.map(e => `
+    <div class="row">
+      <div class="row-main">
+        <div class="row-title">${esc(e.label)}</div>
+        <div class="row-sub">
+          ${fmt(e.from)} → ${fmt(e.to)} · ${shortDate(e.at)}
+          ${e.reason ? `<div class="log-reason">${esc(e.reason)}</div>` : ''}
+        </div>
+      </div>
+    </div>`).join('');
+
+  $('log-empty').hidden = entries.length > 0;
+}
+
 /* ---------- 9. Rendering: Debts --------------------------- */
 /* The code says "cards" throughout because that's what the saved data
    and backup files call them. Only the on-screen wording is "Debts". */
@@ -825,6 +1041,8 @@ function renderCardDetail() {
 
 function renderAll() {
   renderWeek();
+  renderPlan();
+  renderLog();
   renderBills();
   renderCards();
   renderAccount();
@@ -837,7 +1055,7 @@ function renderAll() {
 
 function showScreen(name) {
   // detail screens keep their parent tab lit
-  const parent = { card: 'cards', bill: 'bills', account: 'week' };
+  const parent = { card: 'cards', bill: 'bills', account: 'week', log: 'plan' };
   const litTab = parent[name] || name;
 
   document.querySelectorAll('.tab').forEach(t => {
@@ -850,6 +1068,8 @@ function showScreen(name) {
   window.scrollTo(0, 0);
   updateScrollEdge();
   if (name === 'week')    renderWeek();
+  if (name === 'plan')    renderPlan();
+  if (name === 'log')     renderLog();
   if (name === 'bills')   renderBills();
   if (name === 'account') renderAccount();
   if (name === 'backup')  renderBackupInfo();
@@ -864,7 +1084,7 @@ document.querySelectorAll('.tab').forEach(tab => {
 let editing = { type: 'bill', id: null };
 
 const SHEET_GROUPS = ['card', 'bill', 'pay', 'adjust', 'account', 'transfer',
-                      'avalanche', 'entry'];
+                      'avalanche', 'entry', 'reserve'];
 
 function openSheet(type, id) {
   editing = { type, id };
@@ -878,7 +1098,8 @@ function openSheet(type, id) {
     account:  'Correct Balance',
     transfer: 'Weekly Transfer',
     avalanche: 'Avalanche Extra',
-    entry: 'Edit Entry'
+    entry: 'Edit Entry',
+    reserve: 'Minimum Reserve'
   };
   $('sheet-title').textContent = titles[type];
 
@@ -909,6 +1130,8 @@ function openSheet(type, id) {
     $('bill-day').value      = b ? String(b.day) : '1';
     $('bill-variable').checked = b ? !!b.variable : false;
     $('bill-envelope').checked = b ? !!b.envelope : false;
+    $('bill-reason').value = '';
+    $('bill-reason-row').hidden = isNew;   // nothing to explain on a new bill
     setBillCategory(b ? billCategory(b) : 'bill');
 
   } else if (type === 'pay') {
@@ -944,6 +1167,9 @@ function openSheet(type, id) {
     $('entry-hint').textContent =
       `Changing the amount adjusts ${what} by the difference. A minus sign ` +
       'means money going out. Every figure below this entry is recalculated.';
+
+  } else if (type === 'reserve') {
+    $('reserve-input').value = settings.minReserve || '';
 
   } else if (type === 'avalanche') {
     $('avalanche-input').value = settings.avalancheExtra || '';
@@ -1063,6 +1289,7 @@ function saveSheet() {
   if (type === 'transfer') return saveTransferAmount();
   if (type === 'avalanche') return saveAvalancheAmount();
   if (type === 'entry') return saveEntryEdit();
+  if (type === 'reserve') return saveReserve();
 }
 
 function saveCard() {
@@ -1109,6 +1336,12 @@ function saveBill() {
 
   const existing = bills.find(b => b.id === editing.id);
   if (existing) {
+    // note the change before overwriting it, so the log keeps both figures
+    if (round2(existing.amount) !== round2(data.amount)) {
+      logChange(existing.name + ' planned amount',
+                round2(existing.amount), round2(data.amount),
+                $('bill-reason').value.trim());
+    }
     Object.assign(existing, data);
   } else {
     bills.push({
@@ -1210,6 +1443,16 @@ function saveTransferAmount() {
   save(SETTINGS_KEY, settings);
   closeSheet();
   renderWeek();
+}
+
+function saveReserve() {
+  const amount = toNumber($('reserve-input').value);
+  if (amount < 0) return showError('Please enter zero or more.');
+
+  settings.minReserve = round2(amount);
+  save(SETTINGS_KEY, settings);
+  closeSheet();
+  renderPlan();
 }
 
 function saveAvalancheAmount() {
@@ -1341,7 +1584,7 @@ function backupContents() {
     app: 'budget-app',
     version: 2,
     exportedAt: new Date().toISOString(),
-    cards, bills, account, settings
+    cards, bills, account, settings, changelog
   };
 }
 
@@ -1445,6 +1688,21 @@ function cleanBills(list) {
   });
 }
 
+function cleanChangeLog(list) {
+  if (!Array.isArray(list)) return [];
+  return list.map(e => {
+    const at = e && e.at;
+    return {
+      id:     e && e.id ? String(e.id) : newId(),
+      at:     typeof at === 'string' && !isNaN(Date.parse(at)) ? at : new Date().toISOString(),
+      label:  e && e.label ? String(e.label) : 'Change',
+      from:   toNumber(e && e.from),
+      to:     toNumber(e && e.to),
+      reason: e && e.reason ? String(e.reason) : ''
+    };
+  });
+}
+
 function cleanAccount(obj) {
   if (!obj || typeof obj !== 'object') return { balance: 0, history: [] };
   return { balance: toNumber(obj.balance), history: cleanHistory(obj.history) };
@@ -1467,7 +1725,8 @@ function cleanSettings(obj) {
       : null,
     collapsedWeeks: Array.isArray(obj.collapsedWeeks)
       ? obj.collapsedWeeks.filter(k => BUCKET_ORDER.includes(k))
-      : DEFAULT_SETTINGS.collapsedWeeks.slice()
+      : DEFAULT_SETTINGS.collapsedWeeks.slice(),
+    minReserve: Math.max(0, toNumber(obj.minReserve))
   };
 }
 
@@ -1497,15 +1756,17 @@ async function importBackup(file) {
   );
   if (!ok) return;
 
-  cards    = newCards || [];
-  bills    = newBills || [];
-  account  = newAccount;
-  settings = cleanSettings(data && data.settings);
+  cards     = newCards || [];
+  bills     = newBills || [];
+  account   = newAccount;
+  settings  = cleanSettings(data && data.settings);
+  changelog = cleanChangeLog(data && data.changelog);
 
   save(CARDS_KEY, cards);
   save(BILLS_KEY, bills);
   save(ACCOUNT_KEY, account);
   save(SETTINGS_KEY, settings);
+  save(CHANGELOG_KEY, changelog);
 
   renderAll();
   alert('Restored.');
@@ -1528,6 +1789,10 @@ $('account-open').addEventListener('click', () => { renderAccount(); showScreen(
 $('account-adjust-btn').addEventListener('click', () => openSheet('account', null));
 $('edit-transfer').addEventListener('click', () => openSheet('transfer', null));
 $('edit-avalanche').addEventListener('click', () => openSheet('avalanche', null));
+$('edit-reserve').addEventListener('click', () => openSheet('reserve', null));
+$('open-log').addEventListener('click', () => showScreen('log'));
+$('log-back').addEventListener('click', () => showScreen('plan'));
+$('plan-anchor').addEventListener('click', () => { renderAccount(); showScreen('account'); });
 
 $('sheet-cancel').addEventListener('click', closeSheet);
 $('backdrop').addEventListener('click', closeSheet);

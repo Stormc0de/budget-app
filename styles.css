@@ -594,6 +594,74 @@ body.scrolled .nav {
 }
 
 /* ===========================================================
+   PLAN SCREEN — one card per paycheck
+   =========================================================== */
+.plan-summary { margin-bottom: 12px; }
+
+.plan-week {
+  padding: 14px 16px;
+  border-radius: var(--r-card);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+}
+
+/* a week that cannot cover itself is unmissable */
+.plan-week.short {
+  background: var(--bad-bg);
+  color: var(--bad-fg);
+}
+
+.plan-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.plan-date  { font-size: 15px; font-weight: 650; }
+.plan-close {
+  font-size: 19px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* the money in and out for this cycle */
+.plan-flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.plan-flow .in  { color: var(--green); }
+.plan-flow .out { color: var(--text-2); }
+.plan-week.short .plan-flow .out { color: inherit; opacity: 0.8; }
+
+.plan-bills {
+  margin-top: 7px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+.plan-week.short .plan-bills { color: inherit; opacity: 0.85; }
+
+.plan-warn {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid currentColor;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* the note you attach to a change */
+.log-reason {
+  margin-top: 4px;
+  color: var(--text);
+  font-style: italic;
+}
+
+/* ===========================================================
    DETAIL SCREENS
    =========================================================== */
 .balance-box {
