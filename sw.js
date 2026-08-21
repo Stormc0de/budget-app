@@ -4,7 +4,7 @@
    IMPORTANT: after you edit any file, bump the version number below
    (v1 -> v2). That's what tells the phone to fetch the new code. */
 
-const CACHE = 'budget-v22';
+const CACHE = 'budget-v25';
 
 const FILES = [
   '.',

@@ -660,7 +660,17 @@ body.scrolled .nav {
 }
 .plan-flow .in  { color: var(--green); }
 .plan-flow .out { color: var(--text-2); }
+/* money moved into an envelope: committed, but still in the account */
+.plan-flow .held { color: var(--tint); }
 .plan-week.short .plan-flow .out { color: inherit; opacity: 0.8; }
+
+.plan-cushion {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.plan-week.short .plan-cushion { color: inherit; opacity: 0.9; }
 
 .plan-bills {
   margin-top: 7px;

@@ -387,6 +387,15 @@ function billEntry(bill, delta, note) {
   });
 }
 
+/* How much a bill actually needs this month. Without a target that is
+   simply the planned amount; with one it is whatever tops the envelope
+   back up, and nothing once it is full. */
+function topUpAmount(bill) {
+  if (!(bill.target > 0)) return bill.amount;
+  const room = Math.max(0, round2(bill.target - Math.max(0, bill.balance)));
+  return round2(Math.min(bill.amount, room));
+}
+
 function fundBill(id) {
   const bill = bills.find(b => b.id === id);
   if (!bill) return;
@@ -396,10 +405,15 @@ function fundBill(id) {
     return;
   }
 
-  bill.balance     = round2(bill.balance + bill.amount);
+  /* With a target, only top the envelope back up to it. If it is already
+     full, this month's money is not needed and simply stays in your
+     cushion — which is the whole point of a standing balance. */
+  const amount = topUpAmount(bill);
+
+  bill.balance     = round2(bill.balance + amount);
   bill.fundedMonth = currentMonth();
-  bill.fundedAmount = bill.amount;          // remembered so undo is exact
-  billEntry(bill, bill.amount, 'Funded');
+  bill.fundedAmount = amount;               // remembered so undo is exact
+  if (amount > 0) billEntry(bill, amount, 'Funded');
 
   save(BILLS_KEY, bills);
   renderAll();
@@ -437,6 +451,20 @@ function payBill(id, actual, note) {
   billEntry(bill, -fromEnvelope, note || `Paid ${fmt(actual)}`);
   accountEntry(-actual, `Paid ${bill.name}`);
 
+  // If this bill is a card or loan payment, the debt drops by the same
+  // amount — no second trip to the Debts tab.
+  const linked = bill.linkedCardId && cards.find(c => c.id === bill.linkedCardId);
+  if (linked) {
+    linked.balance = round2(linked.balance - actual);
+    if (!linked.history) linked.history = [];
+    linked.history.push({
+      id: newId(), at: new Date().toISOString(),
+      delta: -actual, balanceAfter: linked.balance,
+      reason: 'Payment from ' + bill.name
+    });
+    save(CARDS_KEY, cards);
+  }
+
   save(BILLS_KEY, bills);
   renderAll();
 }
@@ -447,6 +475,19 @@ function unpayBill(id) {
 
   const amount = bill.paidAmount || 0;
   const back   = bill.paidFromEnvelope || 0;
+
+  // put the debt back exactly as it was
+  const linked = bill.linkedCardId && cards.find(c => c.id === bill.linkedCardId);
+  if (linked && amount) {
+    linked.balance = round2(linked.balance + amount);
+    if (!linked.history) linked.history = [];
+    linked.history.push({
+      id: newId(), at: new Date().toISOString(),
+      delta: amount, balanceAfter: linked.balance,
+      reason: 'Payment undone: ' + bill.name
+    });
+    save(CARDS_KEY, cards);
+  }
 
   bill.balance = round2(bill.balance + back);
   billEntry(bill, back, 'Payment undone');
@@ -552,33 +593,73 @@ function billsFundedOn(payday, isCurrentCycle) {
 
 function projectPaychecks(count = PROJECTION_WEEKS) {
   const firstPayday = new Date(currentWeek() + 'T00:00:00');
-  let balance = account.balance;          // the anchor: your real figure
+
+  let balance = account.balance;
+
+  /* Each envelope is carried forward week by week, because a topped-up
+     envelope needs nothing next month — and that is the difference
+     between a cushion that keeps shrinking and one that settles. */
+  const envelope = {};
+  bills.forEach(b => { envelope[b.id] = Math.max(0, b.balance); });
+
+  const sumEnvelopes = () =>
+    round2(Object.keys(envelope).reduce((s, k) => s + Math.max(0, envelope[k]), 0));
+
   const weeks = [];
 
   for (let i = 0; i < count; i++) {
     const payday = new Date(firstPayday);
     payday.setDate(payday.getDate() + i * 7);
+    const current = i === 0;
 
-    // This week's transfer may already be sitting in the balance
-    const transfer = (i === 0 && transferredThisWeek()) ? 0 : settings.weeklyTransfer;
-
-    // The avalanche extra leaves the account weekly too, so the
-    // projection has to carry it or every week reads too rich.
-    const extra = (i === 0 && avalancheDoneThisWeek())
+    const transfer = (current && transferredThisWeek()) ? 0 : settings.weeklyTransfer;
+    const extra = (current && avalancheDoneThisWeek())
       ? 0
       : (avalancheTarget() ? settings.avalancheExtra : 0);
 
-    const due = billsFundedOn(payday, i === 0);
-    const billTotal = round2(due.reduce((sum, b) => sum + b.amount, 0));
+    const openingBalance = balance;
+    const openingCushion = round2(balance - sumEnvelopes());
 
-    const opening = balance;
-    balance = round2(opening + transfer - billTotal - extra);
+    balance = round2(balance + transfer - extra);
+
+    let datedTotal = 0;      // money that actually leaves the account
+    let undatedTotal = 0;    // money that only moves into an envelope
+    const listed = [];
+
+    billsFundedOn(payday, current).forEach(bill => {
+      // in the cycle you are standing in, anything already funded needs nothing
+      const alreadyFunded = current && isFunded(bill);
+
+      const room = bill.target > 0
+        ? Math.max(0, round2(bill.target - envelope[bill.id]))
+        : bill.amount;
+      const fundAmount = alreadyFunded ? 0 : round2(Math.min(bill.amount, room));
+
+      envelope[bill.id] = round2(envelope[bill.id] + fundAmount);
+      listed.push(bill);
+
+      if (bill.day !== 'any') {
+        // a dated bill is funded and paid inside the same cycle
+        const fromEnvelope = Math.min(envelope[bill.id], bill.amount);
+        envelope[bill.id] = round2(envelope[bill.id] - fromEnvelope);
+        balance = round2(balance - bill.amount);
+        datedTotal = round2(datedTotal + bill.amount);
+      } else {
+        undatedTotal = round2(undatedTotal + fundAmount);
+      }
+    });
+
+    const committed = sumEnvelopes();
+    const cushion = round2(balance - committed);
 
     weeks.push({
-      payday, opening, transfer, extra, bills: due, billTotal,
-      closing: balance,
-      short: balance < settings.minReserve,
-      shortBy: balance < settings.minReserve ? round2(settings.minReserve - balance) : 0
+      payday, opening: openingBalance, openingCushion,
+      transfer, extra, bills: listed,
+      datedTotal, undatedTotal,
+      billTotal: round2(datedTotal + undatedTotal),
+      closing: balance, committed, cushion,
+      short: cushion < settings.minReserve,
+      shortBy: cushion < settings.minReserve ? round2(settings.minReserve - cushion) : 0
     });
   }
 
@@ -587,7 +668,8 @@ function projectPaychecks(count = PROJECTION_WEEKS) {
     totalIn:    round2(weeks.reduce((s, w) => s + w.transfer, 0)),
     totalBills: round2(weeks.reduce((s, w) => s + w.billTotal, 0)),
     totalExtra: round2(weeks.reduce((s, w) => s + w.extra, 0)),
-    ending:     weeks.length ? weeks[weeks.length - 1].closing : account.balance,
+    ending:        weeks.length ? weeks[weeks.length - 1].closing : account.balance,
+    endingCushion: weeks.length ? weeks[weeks.length - 1].cushion : freeCushion(),
     firstShort: weeks.find(w => w.short) || null
   };
 }
@@ -602,6 +684,78 @@ function logChange(label, from, to, reason) {
     reason: reason || ''
   });
   save(CHANGELOG_KEY, changelog);
+}
+
+/* ---------- 5a2. Debt free date (the avalanche cascade) ----
+
+   The point of the avalanche is that nothing shrinks as debts clear: a
+   cleared debt's minimum keeps getting paid, it just goes to the next
+   target. So the monthly budget stays at (all minimums + your extra)
+   for the whole run, and the last debt gets hit with everything.
+
+   Projection only — real balances always come from your statements. */
+
+function debtFreeProjection() {
+  const live = cards
+    .filter(c => c.balance > 0)
+    .map(c => ({ id: c.id, apr: c.apr, min: c.min, balance: c.balance }));
+
+  if (!live.length) return { cleared: true };
+
+  const monthlyExtra = round2(settings.avalancheExtra * PAYCHECKS_PER_MONTH);
+  const allMinimums  = round2(live.reduce((sum, c) => sum + c.min, 0));
+  const monthlyBudget = round2(allMinimums + monthlyExtra);
+
+  let months = 0;
+  let interest = 0;
+
+  while (months < 600) {
+    const active = live.filter(c => c.balance > 0);
+    if (!active.length) break;
+
+    // interest for the month
+    active.forEach(c => {
+      const charge = round2(c.balance * (c.apr / 100) / 12);
+      c.balance = round2(c.balance + charge);
+      interest = round2(interest + charge);
+    });
+
+    let budget = monthlyBudget;
+
+    // every debt gets its minimum first
+    active.forEach(c => {
+      const pay = Math.min(c.min, c.balance, budget);
+      c.balance = round2(c.balance - pay);
+      budget = round2(budget - pay);
+    });
+
+    // whatever is left lands on the target, then the next one, and so on
+    let guard = 0;
+    while (budget > 0.005 && guard++ < 60) {
+      const remaining = live.filter(c => c.balance > 0);
+      if (!remaining.length) break;
+
+      const pinned = remaining.find(c => c.id === settings.focusCardId);
+      const target = pinned || remaining.reduce((best, c) => {
+        if (c.apr > best.apr) return c;
+        if (c.apr === best.apr && c.balance < best.balance) return c;
+        return best;
+      }, remaining[0]);
+
+      const pay = Math.min(target.balance, budget);
+      target.balance = round2(target.balance - pay);
+      budget = round2(budget - pay);
+    }
+
+    months++;
+    if (!live.some(c => c.balance > 0)) break;
+  }
+
+  if (months >= 600) return { never: true, monthlyBudget };
+
+  const date = new Date();
+  date.setMonth(date.getMonth() + months);
+  return { months, interest, date, monthlyBudget, cleared: false };
 }
 
 /* ---------- 5b. Avalanche extra payment ------------------- */
@@ -851,7 +1005,9 @@ function renderWeek() {
   // fund & pay list, split into weeks by due date
   $('week-bills').innerHTML = weekGroupedHtml(b => {
     const funded = isFunded(b), paid = isPaid(b);
-    const banked = b.balance > 0 ? ` · ${fmt(b.balance)} banked` : '';
+    const banked = b.balance > 0
+      ? ` · ${fmt(b.balance)}${b.target > 0 ? ' of ' + fmt(b.target) : ''} banked`
+      : '';
     const overdue = isOverdue(b);
 
     return `
@@ -896,7 +1052,9 @@ function renderBills() {
         </div>
         <div class="row-right">
           <div class="row-amount">${fmt(b.amount)}</div>
-          ${b.balance > 0 ? `<div class="banked">${fmt(b.balance)} banked</div>` : ''}
+          ${b.balance > 0
+            ? `<div class="banked">${fmt(b.balance)}${b.target > 0 ? ' / ' + fmt(b.target) : ''} banked</div>`
+            : ''}
         </div>
         <div class="chevron">›</div>
       </button>`;
@@ -925,9 +1083,12 @@ function renderBillDetail() {
   if (!bill) return showScreen('bills');
 
   $('bill-title').textContent = bill.name;
+  const linkedCard = bill.linkedCardId && cards.find(c => c.id === bill.linkedCardId);
   $('bill-sub').textContent =
-    `${dueLabel(bill)} · ${fmt(bill.amount)}${bill.variable ? ' planned' : ''}`;
-  $('bill-banked').textContent = fmt(bill.balance);
+    `${dueLabel(bill)} · ${fmt(bill.amount)}${bill.variable ? ' planned' : ''}` +
+    (linkedCard ? ` · pays down ${linkedCard.name}` : '');
+  $('bill-banked').textContent = fmt(bill.balance) +
+    (bill.target > 0 ? ' of ' + fmt(bill.target) : '');
 
   const entries = [...(bill.history || [])].reverse();
   $('bill-history').innerHTML = entries.map(h => `
@@ -984,8 +1145,9 @@ function renderPlan() {
   $('plan-start').textContent = fmt(account.balance);
   $('plan-in').textContent    = fmt(p.totalIn);
   $('plan-out').textContent   = fmt(round2(p.totalBills + p.totalExtra));
-  $('plan-end').textContent   = fmt(p.ending);
-  $('plan-end').className     = 'stat-value' + (p.ending < settings.minReserve ? ' negative' : '');
+  $('plan-end').textContent   = fmt(p.endingCushion);
+  $('plan-end').className     = 'stat-value' +
+    (p.endingCushion < settings.minReserve ? ' negative' : '');
   $('plan-reserve').textContent = fmt(settings.minReserve);
 
   // headline verdict
@@ -995,14 +1157,17 @@ function renderPlan() {
     $('plan-banner-title').textContent =
       'Short ' + fmt(p.firstShort.shortBy) + ' on ' + dayLabel(p.firstShort.payday);
     $('plan-banner-detail').textContent =
-      'That cycle needs ' + fmt(p.firstShort.billTotal) + ' and the balance only reaches ' +
-      fmt(p.firstShort.closing) + '. Everything after it is worse unless something changes.';
+      'That cycle needs ' + fmt(p.firstShort.billTotal) + '. The account holds ' +
+      fmt(p.firstShort.closing) + ' but ' + fmt(p.firstShort.committed) +
+      ' of it is already promised to envelopes, leaving ' + fmt(p.firstShort.cushion) +
+      ' free.';
   } else {
     banner.className = 'banner good';
     $('plan-banner-title').textContent = 'All nine paychecks cover their bills';
     $('plan-banner-detail').textContent =
-      'Lowest point is ' + fmt(Math.min(...p.weeks.map(w => w.closing))) +
-      ', ending at ' + fmt(p.ending) + '.';
+      'Lowest free cushion is ' + fmt(Math.min(...p.weeks.map(w => w.cushion))) +
+      '. After nine paychecks the account holds ' + fmt(p.ending) + ', with ' +
+      fmt(p.endingCushion) + ' of it free.';
   }
 
   $('plan-weeks').innerHTML = p.weeks.map((w, i) => {
@@ -1018,11 +1183,15 @@ function renderPlan() {
         </div>
         <div class="plan-flow">
           <span class="in">+${fmt(w.transfer)} in</span>
-          <span class="out">−${fmt(w.billTotal)} bills</span>
+          <span class="out">−${fmt(w.datedTotal)} paid out</span>
+          ${w.undatedTotal > 0 ? `<span class="held">${fmt(w.undatedTotal)} to envelopes</span>` : ''}
           ${w.extra > 0 ? `<span class="out">−${fmt(w.extra)} extra</span>` : ''}
         </div>
+        <div class="plan-cushion">
+          ${fmt(w.committed)} committed · <strong>${fmt(w.cushion)} free</strong>
+        </div>
         <div class="plan-bills">${names}</div>
-        ${w.short ? `<div class="plan-warn">Short ${fmt(w.shortBy)} against your ${fmt(settings.minReserve)} reserve</div>` : ''}
+        ${w.short ? `<div class="plan-warn">Free cushion short ${fmt(w.shortBy)} against your ${fmt(settings.minReserve)} reserve</div>` : ''}
       </div>`;
   }).join('');
 
@@ -1054,6 +1223,7 @@ function renderLog() {
    and backup files call them. Only the on-screen wording is "Debts". */
 
 function renderCards() {
+  renderFreedom();
   const target = avalancheTarget();
 
   $('cards-list').innerHTML = cards.map(c => `
@@ -1114,6 +1284,48 @@ function renderCardDetail() {
 }
 
 /* The focus button, plus a nudge if your pick is not the cheapest choice. */
+function renderFreedom() {
+  const box = $('freedom-box');
+  const note = $('freedom-note');
+  const owed = round2(cards.reduce((sum, c) => sum + Math.max(0, c.balance), 0));
+  const result = debtFreeProjection();
+
+  if (result.cleared) {
+    box.hidden = true;
+    note.hidden = cards.length === 0;
+    note.textContent = 'Every debt is cleared. Nothing left to project.';
+    return;
+  }
+
+  if (result.never) {
+    box.hidden = true;
+    note.hidden = false;
+    note.textContent =
+      `At ${fmt(result.monthlyBudget)} a month these never clear — the interest ` +
+      'outruns the payments. Raising the minimums or the weekly extra fixes it.';
+    return;
+  }
+
+  box.hidden = false;
+  note.hidden = false;
+
+  const years = Math.floor(result.months / 12);
+  const rest = result.months % 12;
+  $('freedom-months').textContent = years
+    ? years + 'y ' + rest + 'm'
+    : result.months + (result.months === 1 ? ' month' : ' months');
+  $('freedom-date').textContent = 'around ' +
+    result.date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  $('freedom-owed').textContent = fmt(owed);
+  $('freedom-interest').textContent = fmt(result.interest);
+
+  const target = avalancheTarget();
+  note.textContent =
+    `${fmt(result.monthlyBudget)} a month: every minimum plus ` +
+    `${fmt(settings.avalancheExtra)} a week. As each debt clears its payment rolls ` +
+    `onto the next` + (target ? `, starting with ${target.name}` : '') + '.';
+}
+
 function renderFocusControls(card) {
   const target = avalancheTarget();
   const isTarget = !!(target && target.id === card.id);
@@ -1299,6 +1511,14 @@ function openSheet(type, id) {
     $('bill-day').value      = b ? String(b.day) : '1';
     $('bill-variable').checked = b ? !!b.variable : false;
     $('bill-envelope').checked = b ? !!b.envelope : false;
+    $('bill-target').value = (b && b.target) ? b.target : '';
+    // rebuild the debt list each time, in case debts changed
+    const linkSelect = $('bill-linked');
+    linkSelect.innerHTML = '';
+    linkSelect.appendChild(new Option('Not linked', ''));
+    cards.forEach(c => linkSelect.appendChild(new Option(c.name, c.id)));
+    linkSelect.value = (b && b.linkedCardId) || '';
+
     $('bill-reason').value = '';
     $('bill-reason-row').hidden = isNew;   // nothing to explain on a new bill
     setBillCategory(b ? billCategory(b) : 'bill');
@@ -1384,6 +1604,12 @@ function updateBillHint() {
   if ($('bill-day').value === 'any') {
     parts.push('No fixed date: this bill will never be shown as overdue.');
   }
+  // the target only makes sense for an envelope
+  $('bill-target-row').hidden = !$('bill-envelope').checked;
+  if ($('bill-envelope').checked && toNumber($('bill-target').value) > 0) {
+    parts.push('Topped up to ' + fmt(toNumber($('bill-target').value)) +
+               ' and no further — once it is full, the money stays in your cushion.');
+  }
   $('bill-hint').textContent = parts.join(' ');
   $('bill-hint').hidden = parts.length === 0;
 }
@@ -1396,6 +1622,8 @@ function setBillCategory(key) {
   document.querySelectorAll('#bill-category .seg').forEach(b => {
     b.classList.toggle('active', b.dataset.cat === key);
   });
+  // only card/loan payments can point at a debt
+  $('bill-linked-row').hidden = key !== 'debt';
   updateBillHint();
 }
 
@@ -1499,6 +1727,8 @@ function saveBill() {
     amount:   toNumber($('bill-amount').value),
     day,
     category: currentCategory,
+    target: $('bill-envelope').checked ? Math.max(0, toNumber($('bill-target').value)) : 0,
+    linkedCardId: currentCategory === 'debt' ? ($('bill-linked').value || null) : null,
     variable: $('bill-variable').checked,
     envelope: $('bill-envelope').checked
   };
@@ -1846,6 +2076,8 @@ function cleanBills(list) {
       category: (b && b.category === 'debt') ? 'debt' : 'bill',
       variable: !!(b && b.variable),
       envelope: !!(b && b.envelope),
+      linkedCardId: (b && b.linkedCardId) ? String(b.linkedCardId) : null,
+      target:   Math.max(0, toNumber(b && b.target)),
       balance:  toNumber(b && b.balance),
       fundedMonth:  monthStamp(b && b.fundedMonth),
       fundedAmount: toNumber(b && b.fundedAmount),
@@ -1985,6 +2217,7 @@ document.querySelectorAll('#bill-category .seg').forEach(b => {
 
 // keep the bill hint in step with the switches
 $('bill-variable').addEventListener('change', updateBillHint);
+$('bill-target').addEventListener('input', updateBillHint);
 $('bill-envelope').addEventListener('change', updateBillHint);
 $('bill-day').addEventListener('change', updateBillHint);
 

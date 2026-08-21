@@ -255,6 +255,25 @@
     </header>
 
     <main class="content">
+      <!-- Whole-portfolio projection: minimums plus the extra, rolling
+           each cleared debt's payment into the next one. -->
+      <div class="balance-box" id="freedom-box" hidden>
+        <div class="balance-label">Debt free in</div>
+        <div class="balance-value" id="freedom-months">—</div>
+        <div class="payoff-date" id="freedom-date"></div>
+        <div class="stat-row">
+          <div class="stat">
+            <div class="stat-label">Total owed</div>
+            <div class="stat-value" id="freedom-owed">$0.00</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Interest to come</div>
+            <div class="stat-value" id="freedom-interest">$0.00</div>
+          </div>
+        </div>
+      </div>
+      <p class="note" id="freedom-note" hidden></p>
+
       <div class="list" id="cards-list"></div>
       <p class="empty" id="cards-empty" hidden>No debts yet. Tap + to add one.</p>
     </main>
@@ -438,6 +457,19 @@
         </label>
         <!-- Only when editing: if the planned amount changes, this note
              goes into the Change Log alongside the old and new figures. -->
+        <!-- Card/loan payments can point at a debt, so paying the bill
+             lowers that debt too instead of you entering it twice. -->
+        <!-- A standing balance to keep ready, rather than a pile that
+             grows forever. Once the envelope is topped up, the month's
+             money stays in your cushion instead. -->
+        <label class="field" id="bill-target-row" hidden>
+          <span>Keep topped to</span>
+          <input type="text" inputmode="decimal" id="bill-target" placeholder="0.00">
+        </label>
+        <label class="field" id="bill-linked-row" hidden>
+          <span>Pays down</span>
+          <select id="bill-linked"></select>
+        </label>
         <label class="field" id="bill-reason-row" hidden>
           <span>Reason</span>
           <input type="text" id="bill-reason" placeholder="Optional — why it changed" autocomplete="off">
