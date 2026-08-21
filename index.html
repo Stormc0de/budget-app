@@ -59,10 +59,11 @@
       <div class="list">
         <div class="row">
           <button class="check" data-ritual="paycheck" aria-label="Mark that you got paid">✓</button>
-          <div class="row-main">
+          <button class="row-main row-main-btn" id="edit-paycheck">
             <div class="row-title">Got paid</div>
             <div class="row-sub" id="paycheck-sub"></div>
-          </div>
+          </button>
+          <div class="row-amount" id="paycheck-amount"></div>
         </div>
         <div class="row">
           <button class="check" data-ritual="transfer" aria-label="Mark the transfer as made">✓</button>
@@ -108,6 +109,27 @@
         <div class="account-balance" id="plan-start">$0.00</div>
         <div class="row-sub">Tap to correct it against your bank</div>
       </button>
+
+      <!-- Income against everything committed, per month -->
+      <div class="balance-box" id="surplus-box">
+        <div class="balance-label">Left over each month</div>
+        <div class="balance-value" id="surplus-value">$0.00</div>
+        <div class="stat-row">
+          <div class="stat">
+            <div class="stat-label">Income</div>
+            <div class="stat-value" id="surplus-in">$0.00</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Bills</div>
+            <div class="stat-value" id="surplus-bills">$0.00</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">To debt</div>
+            <div class="stat-value" id="surplus-extra">$0.00</div>
+          </div>
+        </div>
+      </div>
+      <p class="note" id="surplus-note"></p>
 
       <h2 class="section-title">Nine paychecks</h2>
       <div class="stat-row plan-summary">
@@ -465,6 +487,15 @@
         <!-- A standing balance to keep ready, rather than a pile that
              grows forever. Once the envelope is topped up, the month's
              money stays in your cushion instead. -->
+        <label class="field">
+          <span>How often</span>
+          <select id="bill-cadence"></select>
+        </label>
+        <!-- Only for bills that come round less often than monthly -->
+        <label class="field" id="bill-month-row" hidden>
+          <span>Due in</span>
+          <select id="bill-month"></select>
+        </label>
         <label class="field" id="bill-target-row" hidden>
           <span>Keep topped to</span>
           <input type="text" inputmode="decimal" id="bill-target" placeholder="0.00">
@@ -566,6 +597,15 @@
         </label>
       </div>
       <p class="note" id="entry-hint" hidden></p>
+
+      <!-- What a paycheck is worth -->
+      <div class="field-group" id="fields-paycheck" hidden>
+        <label class="field">
+          <span>Paycheck</span>
+          <input type="text" inputmode="decimal" id="paycheck-input" placeholder="0.00">
+        </label>
+      </div>
+      <p class="note" id="paycheck-hint" hidden></p>
 
       <!-- Minimum reserve used by the Plan screen -->
       <div class="field-group" id="fields-reserve" hidden>

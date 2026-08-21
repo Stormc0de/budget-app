@@ -606,6 +606,17 @@ body.scrolled .nav {
   top: -4px; bottom: -4px;
 }
 
+/* stands in for the Pay chip in a month a bill is not due */
+.chip-note {
+  min-width: 82px;
+  padding: 7px 12px;
+  border-radius: var(--r-pill);
+  color: var(--text-2);
+  font-size: 12px;
+  font-style: italic;
+  text-align: center;
+}
+
 .chip.on-fund {
   background: var(--tint);
   color: #fff;
@@ -903,6 +914,10 @@ body.scrolled .nav {
   border-bottom: 0.5px solid var(--separator);
 }
 .field:last-child { border-bottom: 0; }
+/* display:flex above is an author rule and would otherwise beat the
+   browser's [hidden] { display: none }, leaving conditional rows on
+   screen even when the code has switched them off. */
+.field[hidden] { display: none; }
 .field > span { flex: 0 0 120px; }
 
 .field input,

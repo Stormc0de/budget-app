@@ -24,6 +24,7 @@ const BILLS_KEY       = 'budget.bills.v1';
 const ACCOUNT_KEY     = 'budget.account.v1';
 const SETTINGS_KEY    = 'budget.settings.v1';
 const CHANGELOG_KEY   = 'budget.changelog.v1';
+const INCOME_KEY      = 'budget.income.v1';
 const LAST_EXPORT_KEY = 'budget.lastExport.v1';
 
 function load(key) {
@@ -64,6 +65,9 @@ const DEFAULT_SETTINGS = {
   // past next week starts folded, to keep the glance view short.
   collapsedWeeks: ['week2', 'week3', 'later', 'done'],
 
+  // What one Thursday paycheck is worth, used for the monthly picture
+  paycheckAmount: 0,
+
   // Plan screen flags any week the projection dips below this
   minReserve: 0,
 
@@ -76,6 +80,7 @@ let bills    = load(BILLS_KEY);
 let account  = loadObject(ACCOUNT_KEY, { balance: 0, history: [] });
 let settings  = loadObject(SETTINGS_KEY, DEFAULT_SETTINGS);
 let changelog = load(CHANGELOG_KEY);
+let income    = load(INCOME_KEY);
 
 /* ---------- 2. Small utilities ---------------------------- */
 
@@ -112,6 +117,45 @@ function currentWeek(date = new Date()) {
   return ymd(d);
 }
 
+/* ---------- How often a bill comes round --------------------
+   cadence is a number of months: 1 monthly, 3 quarterly, 12 annual.
+   anchorMonth is any month it falls due, which fixes the whole series —
+   a quarterly bill anchored to January is due Jan, Apr, Jul, Oct. */
+
+const CADENCES = [
+  { months: 1,  label: 'Monthly' },
+  { months: 2,  label: 'Every 2 months' },
+  { months: 3,  label: 'Quarterly' },
+  { months: 6,  label: 'Twice a year' },
+  { months: 12, label: 'Once a year' }
+];
+
+const cadenceOf = bill => {
+  const n = Math.round(toNumber(bill && bill.cadence)) || 1;
+  return CADENCES.some(c => c.months === n) ? n : 1;
+};
+
+const cadenceLabel = bill => {
+  const n = cadenceOf(bill);
+  const found = CADENCES.find(c => c.months === n);
+  return found ? found.label : 'Monthly';
+};
+
+// Does this bill fall due in the month of the given date?
+function isDueMonth(bill, date) {
+  const n = cadenceOf(bill);
+  if (n === 1) return true;
+  const anchor = Math.min(11, Math.max(0, Math.round(toNumber(bill.anchorMonth))));
+  const monthsApart = (date.getFullYear() * 12 + date.getMonth()) - anchor;
+  return ((monthsApart % n) + n) % n === 0;
+}
+
+// What you set aside each month so the money is ready when it lands.
+function monthlySlice(bill) {
+  const n = cadenceOf(bill);
+  return n === 1 ? bill.amount : round2(bill.amount / n);
+}
+
 function daysInMonth(date) {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
 }
@@ -131,11 +175,14 @@ function nextDueDate(bill, from = new Date()) {
   const today = new Date(from);
   today.setHours(0, 0, 0, 0);
 
-  const thisMonth = new Date(today.getFullYear(), today.getMonth(), resolveDueDay(bill, today));
-  if (thisMonth >= today) return thisMonth;
-
-  const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-  return new Date(nextMonth.getFullYear(), nextMonth.getMonth(), resolveDueDay(bill, nextMonth));
+  // walk forward a month at a time until we land on one it is due in
+  for (let step = 0; step <= 14; step++) {
+    const month = new Date(today.getFullYear(), today.getMonth() + step, 1);
+    if (!isDueMonth(bill, month)) continue;
+    const due = new Date(month.getFullYear(), month.getMonth(), resolveDueDay(bill, month));
+    if (due >= today) return due;
+  }
+  return null;
 }
 
 const DAY_MS = 86400000;
@@ -340,11 +387,22 @@ const isPaid   = bill => bill.paidMonth   === currentMonth();
 // date can never be overdue — that's the whole point of that setting.
 function isOverdue(bill) {
   if (bill.day === 'any' || isPaid(bill)) return false;
+  // a quarterly bill cannot be overdue in a month it was never due
+  if (!isDueMonth(bill, new Date())) return false;
   return new Date().getDate() > resolveDueDay(bill);
 }
 
 function dueLabel(bill) {
   if (bill.day === 'any') return 'No fixed date';
+
+  // for anything other than monthly, the next actual date is what matters
+  if (cadenceOf(bill) > 1) {
+    const next = nextDueDate(bill);
+    return cadenceLabel(bill) + (next
+      ? ' · next ' + next.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      : '');
+  }
+
   const actual = resolveDueDay(bill);
   if (bill.day === 'last') return `Last day (${ordinal(actual)})`;
   if (bill.day > actual)   return `${ordinal(bill.day)} (${ordinal(actual)} this month)`;
@@ -391,9 +449,18 @@ function billEntry(bill, delta, note) {
    simply the planned amount; with one it is whatever tops the envelope
    back up, and nothing once it is full. */
 function topUpAmount(bill) {
-  if (!(bill.target > 0)) return bill.amount;
-  const room = Math.max(0, round2(bill.target - Math.max(0, bill.balance)));
-  return round2(Math.min(bill.amount, room));
+  const periodic = cadenceOf(bill) > 1;
+
+  // what this month should put in
+  const need = periodic ? monthlySlice(bill) : bill.amount;
+
+  /* A non-monthly bill has an implied target of the whole amount — there
+     is no sense saving past what it costs. An explicit target still wins. */
+  const target = bill.target > 0 ? bill.target : (periodic ? bill.amount : 0);
+  if (!(target > 0)) return need;
+
+  const room = Math.max(0, round2(target - Math.max(0, bill.balance)));
+  return round2(Math.min(need, room));
 }
 
 function fundBill(id) {
@@ -405,9 +472,9 @@ function fundBill(id) {
     return;
   }
 
-  /* With a target, only top the envelope back up to it. If it is already
-     full, this month's money is not needed and simply stays in your
-     cushion — which is the whole point of a standing balance. */
+  /* Top up by this month's share — the full amount for a monthly bill,
+     a slice of it for anything less frequent — and never past what the
+     bill actually costs. Money not needed stays in your cushion. */
   const amount = topUpAmount(bill);
 
   bill.balance     = round2(bill.balance + amount);
@@ -507,9 +574,25 @@ const gotPaidThisWeek    = () => settings.lastPaycheckWeek === currentWeek();
 const transferredThisWeek = () => settings.lastTransferWeek === currentWeek();
 
 function togglePaycheck() {
-  settings.lastPaycheckWeek = gotPaidThisWeek() ? null : currentWeek();
+  const week = currentWeek();
+
+  if (gotPaidThisWeek()) {
+    // untick: drop this week's record so the average stays honest
+    income = income.filter(e => e.week !== week);
+    settings.lastPaycheckWeek = null;
+  } else {
+    if (settings.paycheckAmount > 0) {
+      income.push({
+        id: newId(), at: new Date().toISOString(),
+        week, amount: settings.paycheckAmount
+      });
+    }
+    settings.lastPaycheckWeek = week;
+  }
+
+  save(INCOME_KEY, income);
   save(SETTINGS_KEY, settings);
-  renderWeek();
+  renderAll();
 }
 
 function toggleTransfer() {
@@ -556,6 +639,7 @@ function dueDatesInWindow(bill, from, to) {
   }
 
   return months
+    .filter(m => isDueMonth(bill, m))
     .map(m => new Date(m.getFullYear(), m.getMonth(), resolveDueDay(bill, m)))
     .filter(d => d > from && d <= to);
 }
@@ -577,11 +661,20 @@ function billsFundedOn(payday, isCurrentCycle) {
 
     if (bill.day === 'any') return carriesEnvelopes;
 
+    /* Something less frequent than monthly still needs its slice putting
+       aside every month. In a month it actually falls due it appears in
+       the week before that date, so funding and paying sit together;
+       in every other month it rides with the envelopes on the first
+       Thursday. */
+    if (cadenceOf(bill) > 1 && !isDueMonth(bill, payday)) {
+      return carriesEnvelopes;
+    }
+
     /* In the cycle you are standing in, also sweep up anything still
        unpaid that was due earlier or is due today. Its funding Thursday
        has passed, but the money has not actually left yet — leaving it
        out would make every week after this one read too rich. */
-    if (isCurrentCycle) {
+    if (isCurrentCycle && isDueMonth(bill, payday)) {
       const dueThisMonth = new Date(payday.getFullYear(), payday.getMonth(),
                                     resolveDueDay(bill, payday));
       if (dueThisMonth <= windowEnd) return true;
@@ -630,16 +723,23 @@ function projectPaychecks(count = PROJECTION_WEEKS) {
       // in the cycle you are standing in, anything already funded needs nothing
       const alreadyFunded = current && isFunded(bill);
 
-      const room = bill.target > 0
-        ? Math.max(0, round2(bill.target - envelope[bill.id]))
-        : bill.amount;
-      const fundAmount = alreadyFunded ? 0 : round2(Math.min(bill.amount, room));
+      const periodic = cadenceOf(bill) > 1;
+      const need = periodic ? monthlySlice(bill) : bill.amount;
+      const target = bill.target > 0 ? bill.target : (periodic ? bill.amount : 0);
+      const room = target > 0
+        ? Math.max(0, round2(target - envelope[bill.id]))
+        : need;
+      const fundAmount = alreadyFunded ? 0 : round2(Math.min(need, room));
 
       envelope[bill.id] = round2(envelope[bill.id] + fundAmount);
       listed.push(bill);
 
-      if (bill.day !== 'any') {
-        // a dated bill is funded and paid inside the same cycle
+      /* Money only leaves in a month the bill actually falls due. A
+         quarterly bill spends two months quietly filling its envelope
+         and takes nothing out of the account until the third. */
+      const paysNow = bill.day !== 'any' && isDueMonth(bill, payday);
+
+      if (paysNow) {
         const fromEnvelope = Math.min(envelope[bill.id], bill.amount);
         envelope[bill.id] = round2(envelope[bill.id] - fromEnvelope);
         balance = round2(balance - bill.amount);
@@ -672,6 +772,33 @@ function projectPaychecks(count = PROJECTION_WEEKS) {
     endingCushion: weeks.length ? weeks[weeks.length - 1].cushion : freeCushion(),
     firstShort: weeks.find(w => w.short) || null
   };
+}
+
+/* ---------- 4b2. Income against commitments ----------------
+   Everything here is per month, using 4.33 paychecks — a weekly bill
+   is not four a month, and using four quietly understates the year. */
+
+// What a bill really costs per month: the whole thing if it is monthly,
+// its slice if it comes round less often.
+function monthlyBillCost(bill) {
+  return cadenceOf(bill) > 1 ? monthlySlice(bill) : bill.amount;
+}
+
+const monthlyIncome = () => round2(settings.paycheckAmount * PAYCHECKS_PER_MONTH);
+
+function monthlyCommitments() {
+  const billTotal = round2(bills.reduce((sum, b) => sum + monthlyBillCost(b), 0));
+  const extra = round2(settings.avalancheExtra * PAYCHECKS_PER_MONTH);
+  return { billTotal, extra, total: round2(billTotal + extra) };
+}
+
+const monthlySurplus = () => round2(monthlyIncome() - monthlyCommitments().total);
+
+// What your recent paychecks actually came to, so drift is visible.
+function recentPaycheckAverage(count = 8) {
+  const recent = income.slice(-count);
+  if (!recent.length) return 0;
+  return round2(recent.reduce((s, e) => s + e.amount, 0) / recent.length);
 }
 
 /* ---------- 4c. The change log ---------------------------- */
@@ -980,7 +1107,11 @@ function renderWeek() {
   paidTick.classList.toggle('on', gotPaidThisWeek());
   xferTick.classList.toggle('on', transferredThisWeek());
 
-  $('paycheck-sub').textContent = gotPaidThisWeek() ? 'Marked for this week' : 'Not marked yet';
+  $('paycheck-amount').textContent = settings.paycheckAmount > 0
+    ? fmt(settings.paycheckAmount) : '';
+  $('paycheck-sub').textContent = settings.paycheckAmount <= 0
+    ? 'Tap to set what a paycheck is worth'
+    : (gotPaidThisWeek() ? 'Marked for this week' : 'Not marked yet');
   $('transfer-sub').textContent = transferredThisWeek()
     ? 'Moved in this week — tap the amount to change it'
     : 'Tap the circle once the money has moved';
@@ -1005,6 +1136,8 @@ function renderWeek() {
   // fund & pay list, split into weeks by due date
   $('week-bills').innerHTML = weekGroupedHtml(b => {
     const funded = isFunded(b), paid = isPaid(b);
+    // nothing to pay in a month a quarterly or annual bill is not due
+    const payable = b.day === 'any' || isDueMonth(b, new Date());
     const banked = b.balance > 0
       ? ` · ${fmt(b.balance)}${b.target > 0 ? ' of ' + fmt(b.target) : ''} banked`
       : '';
@@ -1015,16 +1148,16 @@ function renderWeek() {
         <div class="row-main">
           <div class="row-title">${esc(b.name)}</div>
           <div class="row-sub ${overdue ? 'overdue' : ''}">
-            ${overdue ? 'Overdue · ' : ''}${dueLabel(b)} · ${fmt(b.amount)}${b.variable ? ' planned' : ''}${banked}
+            ${overdue ? 'Overdue · ' : ''}${dueLabel(b)} · ${fmt(b.amount)}${b.variable ? ' planned' : ''}${cadenceOf(b) > 1 ? ' · ' + fmt(monthlySlice(b)) + '/mo' : ''}${banked}
           </div>
         </div>
         <div class="chips">
           <button class="chip ${funded ? 'on-fund' : ''}" data-fund="${b.id}">
             ${funded ? '✓&nbsp;Funded' : 'Fund'}
           </button>
-          <button class="chip ${paid ? 'on-paid' : ''}" data-pay="${b.id}">
+          ${payable ? `<button class="chip ${paid ? 'on-paid' : ''}" data-pay="${b.id}">
             ${paid ? '✓&nbsp;Paid' : 'Pay'}
-          </button>
+          </button>` : '<span class="chip-note">saving</span>'}
         </div>
       </div>`;
   });
@@ -1139,6 +1272,52 @@ function renderAccount() {
 /* A plain inline SVG line of the free cushion across the nine paychecks.
    No library — just a path, a zero line and your reserve line. The point
    is to see the dip before you read a single figure. */
+/* The month in one view: what comes in, what is already spoken for,
+   and what is genuinely left. */
+function renderSurplus() {
+  const inc = monthlyIncome();
+  const commit = monthlyCommitments();
+  const left = monthlySurplus();
+
+  $('surplus-value').textContent = inc > 0 ? fmt(left) : '—';
+  $('surplus-value').className = 'balance-value' + (inc > 0 && left < 0 ? ' negative' : '');
+  $('surplus-in').textContent    = fmt(inc);
+  $('surplus-bills').textContent = fmt(commit.billTotal);
+  $('surplus-extra').textContent = fmt(commit.extra);
+
+  const note = $('surplus-note');
+
+  if (inc <= 0) {
+    note.textContent = 'Set what a paycheck is worth on the Week tab — tap "Got paid" — ' +
+      'and this becomes your real monthly surplus.';
+    return;
+  }
+
+  const lines = [];
+  lines.push(fmt(settings.paycheckAmount) + ' a paycheck at 4.33 a month.');
+
+  /* Two different questions: can income cover everything, and is the
+     weekly transfer alone enough to keep the Bills account level. */
+  const transferMonthly = round2(settings.weeklyTransfer * PAYCHECKS_PER_MONTH);
+  const gap = round2(commit.billTotal - transferMonthly);
+  if (gap > 0) {
+    lines.push('Your transfers bring in ' + fmt(transferMonthly) + ' a month but bills need ' +
+      fmt(commit.billTotal) + ', so the Bills account drains about ' + fmt(gap) +
+      ' a month. Raising the weekly transfer fixes that.');
+  } else {
+    lines.push('Transfers of ' + fmt(transferMonthly) + ' a month cover the ' +
+      fmt(commit.billTotal) + ' of bills.');
+  }
+
+  const average = recentPaycheckAverage();
+  if (average > 0 && Math.abs(average - settings.paycheckAmount) >= 1) {
+    lines.push('Your last ' + Math.min(8, income.length) + ' paychecks averaged ' +
+      fmt(average) + ', so the figure above may be worth updating.');
+  }
+
+  note.textContent = lines.join(' ');
+}
+
 function renderSparkline(p) {
   const box = $('plan-spark');
   if (!p.weeks.length) { box.innerHTML = ''; return; }
@@ -1228,6 +1407,7 @@ function renderPlan() {
       fmt(p.endingCushion) + ' of it free.';
   }
 
+  renderSurplus();
   renderSparkline(p);
 
   $('plan-weeks').innerHTML = p.weeks.map((w, i) => {
@@ -1525,7 +1705,7 @@ document.querySelectorAll('.tab').forEach(tab => {
 let editing = { type: 'bill', id: null };
 
 const SHEET_GROUPS = ['card', 'bill', 'pay', 'adjust', 'account', 'transfer',
-                      'avalanche', 'entry', 'reserve'];
+                      'avalanche', 'entry', 'reserve', 'paycheck'];
 
 function openSheet(type, id) {
   editing = { type, id };
@@ -1540,7 +1720,8 @@ function openSheet(type, id) {
     transfer: 'Weekly Transfer',
     avalanche: 'Avalanche Extra',
     entry: 'Edit Entry',
-    reserve: 'Minimum Reserve'
+    reserve: 'Minimum Reserve',
+    paycheck: 'Paycheck'
   };
   $('sheet-title').textContent = titles[type];
 
@@ -1572,6 +1753,8 @@ function openSheet(type, id) {
     $('bill-variable').checked = b ? !!b.variable : false;
     $('bill-envelope').checked = b ? !!b.envelope : false;
     $('bill-target').value = (b && b.target) ? b.target : '';
+    $('bill-cadence').value = String(b ? cadenceOf(b) : 1);
+    $('bill-month').value = String(b ? (b.anchorMonth || 0) : new Date().getMonth());
     // rebuild the debt list each time, in case debts changed
     const linkSelect = $('bill-linked');
     linkSelect.innerHTML = '';
@@ -1616,6 +1799,16 @@ function openSheet(type, id) {
     $('entry-hint').textContent =
       `Changing the amount adjusts ${what} by the difference. A minus sign ` +
       'means money going out. Every figure below this entry is recalculated.';
+
+  } else if (type === 'paycheck') {
+    $('paycheck-input').value = settings.paycheckAmount || '';
+    const average = recentPaycheckAverage();
+    $('paycheck-hint').textContent =
+      'Used for the monthly picture on the Plan tab, at 4.33 paychecks a month.' +
+      (average > 0 ? ' Your last ' + Math.min(8, income.length) +
+        ' came to ' + fmt(average) + ' on average.' : '') +
+      (gotPaidThisWeek() ? ' This week is already ticked, so changing it updates ' +
+        'what was recorded for this week too.' : '');
 
   } else if (type === 'reserve') {
     $('reserve-input').value = settings.minReserve || '';
@@ -1666,6 +1859,15 @@ function updateBillHint() {
   }
   // the target only makes sense for an envelope
   $('bill-target-row').hidden = !$('bill-envelope').checked;
+
+  // which month it lands in only matters when it is not monthly
+  const every = Math.round(toNumber($('bill-cadence').value)) || 1;
+  $('bill-month-row').hidden = every === 1 || $('bill-day').value === 'any';
+  if (every > 1) {
+    const slice = round2(toNumber($('bill-amount').value) / every);
+    parts.push('Set aside ' + fmt(slice) + ' a month so the full amount is ' +
+               'ready when it lands. The envelope stops once it is full.');
+  }
   if ($('bill-envelope').checked && toNumber($('bill-target').value) > 0) {
     parts.push('Topped up to ' + fmt(toNumber($('bill-target').value)) +
                ' and no further — once it is full, the money stays in your cushion.');
@@ -1747,6 +1949,7 @@ function saveSheet() {
   if (type === 'avalanche') return saveAvalancheAmount();
   if (type === 'entry') return saveEntryEdit();
   if (type === 'reserve') return saveReserve();
+  if (type === 'paycheck') return savePaycheck();
 }
 
 function saveCard() {
@@ -1788,6 +1991,8 @@ function saveBill() {
     day,
     category: currentCategory,
     target: $('bill-envelope').checked ? Math.max(0, toNumber($('bill-target').value)) : 0,
+    cadence: Math.round(toNumber($('bill-cadence').value)) || 1,
+    anchorMonth: Math.round(toNumber($('bill-month').value)) || 0,
     linkedCardId: currentCategory === 'debt' ? ($('bill-linked').value || null) : null,
     variable: $('bill-variable').checked,
     envelope: $('bill-envelope').checked
@@ -1902,6 +2107,24 @@ function saveTransferAmount() {
   save(SETTINGS_KEY, settings);
   closeSheet();
   renderWeek();
+}
+
+function savePaycheck() {
+  const amount = toNumber($('paycheck-input').value);
+  if (amount <= 0) return showError('Please enter an amount greater than zero.');
+
+  settings.paycheckAmount = round2(amount);
+
+  // if this week is already ticked, correct what was recorded for it
+  const entry = income.find(e => e.week === currentWeek());
+  if (entry) {
+    entry.amount = settings.paycheckAmount;
+    save(INCOME_KEY, income);
+  }
+
+  save(SETTINGS_KEY, settings);
+  closeSheet();
+  renderAll();
 }
 
 function saveReserve() {
@@ -2043,7 +2266,7 @@ function backupContents() {
     app: 'budget-app',
     version: 2,
     exportedAt: new Date().toISOString(),
-    cards, bills, account, settings, changelog
+    cards, bills, account, settings, changelog, income
   };
 }
 
@@ -2138,6 +2361,8 @@ function cleanBills(list) {
       envelope: !!(b && b.envelope),
       linkedCardId: (b && b.linkedCardId) ? String(b.linkedCardId) : null,
       target:   Math.max(0, toNumber(b && b.target)),
+      cadence:  cadenceOf(b),
+      anchorMonth: Math.min(11, Math.max(0, Math.round(toNumber(b && b.anchorMonth)))),
       balance:  toNumber(b && b.balance),
       fundedMonth:  monthStamp(b && b.fundedMonth),
       fundedAmount: toNumber(b && b.fundedAmount),
@@ -2160,6 +2385,19 @@ function cleanChangeLog(list) {
       from:   toNumber(e && e.from),
       to:     toNumber(e && e.to),
       reason: e && e.reason ? String(e.reason) : ''
+    };
+  });
+}
+
+function cleanIncome(list) {
+  if (!Array.isArray(list)) return [];
+  return list.map(e => {
+    const at = e && e.at;
+    return {
+      id:     e && e.id ? String(e.id) : newId(),
+      at:     typeof at === 'string' && !isNaN(Date.parse(at)) ? at : new Date().toISOString(),
+      week:   weekStamp(e && e.week) || currentWeek(),
+      amount: toNumber(e && e.amount)
     };
   });
 }
@@ -2188,6 +2426,7 @@ function cleanSettings(obj) {
       ? obj.collapsedWeeks.filter(k => BUCKET_ORDER.includes(k))
       : DEFAULT_SETTINGS.collapsedWeeks.slice(),
     minReserve: Math.max(0, toNumber(obj.minReserve)),
+    paycheckAmount: Math.max(0, toNumber(obj.paycheckAmount)),
     focusCardId: obj.focusCardId ? String(obj.focusCardId) : null
   };
 }
@@ -2223,12 +2462,14 @@ async function importBackup(file) {
   account   = newAccount;
   settings  = cleanSettings(data && data.settings);
   changelog = cleanChangeLog(data && data.changelog);
+  income    = cleanIncome(data && data.income);
 
   save(CARDS_KEY, cards);
   save(BILLS_KEY, bills);
   save(ACCOUNT_KEY, account);
   save(SETTINGS_KEY, settings);
   save(CHANGELOG_KEY, changelog);
+  save(INCOME_KEY, income);
 
   renderAll();
   alert('Restored.');
@@ -2255,6 +2496,7 @@ $('account-adjust-btn').addEventListener('click', () => openSheet('account', nul
 $('edit-transfer').addEventListener('click', () => openSheet('transfer', null));
 $('edit-avalanche').addEventListener('click', () => openSheet('avalanche', null));
 $('edit-reserve').addEventListener('click', () => openSheet('reserve', null));
+$('edit-paycheck').addEventListener('click', () => openSheet('paycheck', null));
 $('open-log').addEventListener('click', () => showScreen('log'));
 $('log-back').addEventListener('click', () => showScreen('plan'));
 $('plan-anchor').addEventListener('click', () => { renderAccount(); showScreen('account'); });
@@ -2278,6 +2520,8 @@ document.querySelectorAll('#bill-category .seg').forEach(b => {
 // keep the bill hint in step with the switches
 $('bill-variable').addEventListener('change', updateBillHint);
 $('bill-target').addEventListener('input', updateBillHint);
+$('bill-cadence').addEventListener('change', updateBillHint);
+$('bill-amount').addEventListener('input', updateBillHint);
 $('bill-envelope').addEventListener('change', updateBillHint);
 $('bill-day').addEventListener('change', updateBillHint);
 
@@ -2353,6 +2597,15 @@ for (let d = 1; d <= 31; d++) {
 }
 daySelect.appendChild(new Option('Last day of month', 'last'));
 daySelect.appendChild(new Option('No fixed date', 'any'));
+
+// how often, and for non-monthly bills which month it lands in
+const cadenceSelect = $('bill-cadence');
+CADENCES.forEach(c => cadenceSelect.appendChild(new Option(c.label, String(c.months))));
+
+const monthSelect = $('bill-month');
+['January','February','March','April','May','June','July','August',
+ 'September','October','November','December']
+  .forEach((name, i) => monthSelect.appendChild(new Option(name, String(i))));
 
 // Run saved data through the cleaners so bills from the older version
 // pick up the new fields.
