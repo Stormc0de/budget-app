@@ -1136,6 +1136,64 @@ function renderAccount() {
 
 /* ---------- 8b. Rendering: the Plan screen ---------------- */
 
+/* A plain inline SVG line of the free cushion across the nine paychecks.
+   No library — just a path, a zero line and your reserve line. The point
+   is to see the dip before you read a single figure. */
+function renderSparkline(p) {
+  const box = $('plan-spark');
+  if (!p.weeks.length) { box.innerHTML = ''; return; }
+
+  // start at today's cushion, then one point per payday
+  const values = [p.weeks[0].openingCushion].concat(p.weeks.map(w => w.cushion));
+
+  const W = 320, H = 92, padX = 8, padTop = 12, padBot = 12;
+  const reserve = settings.minReserve;
+
+  // always keep zero and the reserve line inside the picture
+  const lo = Math.min.apply(null, values.concat([0, reserve]));
+  const hi = Math.max.apply(null, values.concat([0, reserve]));
+  const range = (hi - lo) || 1;
+
+  const X = i => padX + i * (W - padX * 2) / (values.length - 1);
+  const Y = v => padTop + (hi - v) * (H - padTop - padBot) / range;
+
+  const line = values
+    .map((v, i) => (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1))
+    .join(' ');
+  /* Close the shaded area onto the ZERO line rather than the bottom of
+     the box, so a cushion below zero hangs under the line the way you
+     would expect, instead of looking like a solid positive block. */
+  const baseline = Y(0).toFixed(1);
+  const area = line +
+    ' L' + X(values.length - 1).toFixed(1) + ' ' + baseline +
+    ' L' + X(0).toFixed(1) + ' ' + baseline + ' Z';
+
+  let lowIndex = 0;
+  values.forEach((v, i) => { if (v < values[lowIndex]) lowIndex = i; });
+
+  const trouble = !!p.firstShort;
+  const day = d => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+
+  box.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" class="spark-svg" role="img"
+         aria-label="Free cushion across the next nine paychecks">
+      <path class="spark-area ${trouble ? 'bad' : ''}" d="${area}"/>
+      ${reserve !== 0 ? `<line class="spark-reserve" x1="${padX}" x2="${W - padX}"
+            y1="${Y(reserve).toFixed(1)}" y2="${Y(reserve).toFixed(1)}"/>` : ''}
+      <line class="spark-zero" x1="${padX}" x2="${W - padX}"
+            y1="${Y(0).toFixed(1)}" y2="${Y(0).toFixed(1)}"/>
+      <path class="spark-line ${trouble ? 'bad' : ''}" d="${line}"
+            vector-effect="non-scaling-stroke"/>
+      <circle class="spark-dot ${values[lowIndex] < reserve ? 'bad' : ''}"
+              cx="${X(lowIndex).toFixed(1)}" cy="${Y(values[lowIndex]).toFixed(1)}" r="3.5"/>
+    </svg>
+    <div class="spark-caption">
+      <span>now</span>
+      <span class="spark-low">low ${fmt(values[lowIndex])}</span>
+      <span>${day(p.weeks[p.weeks.length - 1].payday)}</span>
+    </div>`;
+}
+
 function renderPlan() {
   const p = projectPaychecks();
   const dayLabel = d => d.toLocaleDateString(undefined,
@@ -1169,6 +1227,8 @@ function renderPlan() {
       '. After nine paychecks the account holds ' + fmt(p.ending) + ', with ' +
       fmt(p.endingCushion) + ' of it free.';
   }
+
+  renderSparkline(p);
 
   $('plan-weeks').innerHTML = p.weeks.map((w, i) => {
     const names = w.bills.length

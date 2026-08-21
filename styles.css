@@ -620,6 +620,50 @@ body.scrolled .nav {
 /* ===========================================================
    PLAN SCREEN — one card per paycheck
    =========================================================== */
+
+/* The cushion sparkline */
+.spark {
+  margin-bottom: 10px;
+  padding: 12px 14px 10px;
+  border-radius: var(--r-card);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+}
+
+.spark-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.spark-area      { fill: var(--tint); opacity: 0.14; }
+.spark-area.bad  { fill: var(--red); opacity: 0.12; }
+
+.spark-line {
+  fill: none;
+  stroke: var(--tint);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.spark-line.bad { stroke: var(--red); }
+
+/* where zero sits, and the reserve you asked to be warned about */
+.spark-zero    { stroke: var(--separator); stroke-width: 1; }
+.spark-reserve { stroke: var(--warn-fg); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.75; }
+
+.spark-dot     { fill: var(--tint); }
+.spark-dot.bad { fill: var(--red); }
+
+.spark-caption {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.spark-low { font-weight: 650; }
 .plan-summary { margin-bottom: 12px; }
 
 .plan-week {
