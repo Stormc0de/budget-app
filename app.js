@@ -274,8 +274,14 @@ function groupedHtml(rowHtml, sorter = sortByDue) {
 const BUCKET_ORDER = ['overdue', 'week0', 'week1', 'week2', 'week3',
                       'later', 'undated', 'done'];
 
+/* Bills ticked off during this visit stay where they are, so you watch
+   them turn green instead of vanishing into the folded "Paid" section
+   the instant you tap. They get tidied away next time you open the tab. */
+const paidThisVisit = new Set();
+
 function weekBucket(bill, weekStart) {
-  if (isPaid(bill))        return 'done';      // dealt with; out of the way
+  // dealt with, and not just now — out of the way
+  if (isPaid(bill) && !paidThisVisit.has(bill.id)) return 'done';
   if (bill.day === 'any')  return 'undated';   // envelopes, no due date
   if (isOverdue(bill))     return 'overdue';   // needs attention first
 
@@ -420,6 +426,13 @@ function freeCushion() {
 
 /* ---------- 4. Moving money ------------------------------- */
 
+/* Paying redraws the whole list, which throws away the very button you
+   tapped — so an animation started on tap would vanish instantly.
+   Instead we note which bill was just paid, let the fresh row come back
+   wearing a class, then clear the note so it plays exactly once. */
+let justPaid = null;
+let justFunded = null;
+
 // One line in the Bills account history.
 function accountEntry(delta, reason) {
   account.balance = round2(account.balance + delta);
@@ -483,7 +496,10 @@ function fundBill(id) {
   if (amount > 0) billEntry(bill, amount, 'Funded');
 
   save(BILLS_KEY, bills);
+
+  justFunded = bill.id;
   renderAll();
+  justFunded = null;
 }
 
 function unfundBill(id) {
@@ -533,7 +549,39 @@ function payBill(id, actual, note) {
   }
 
   save(BILLS_KEY, bills);
+
+  /* Hold the row in place just long enough to watch it turn green,
+     then slide it away into "Paid this month" where it belongs. */
+  paidThisVisit.add(bill.id);
+  justPaid = bill.id;           // the fresh row picks this up …
   renderAll();
+  justPaid = null;              // … and nothing after it does
+  fileAwayAfterCelebrating(bill.id);
+}
+
+/* Wait for the celebration, fade the row out, then let the normal
+   grouping put it under "Paid this month". */
+function fileAwayAfterCelebrating(billId) {
+  setTimeout(() => {
+    const bill = bills.find(b => b.id === billId);
+    // it may have been unticked in the meantime
+    if (!bill || !isPaid(bill) || !paidThisVisit.has(billId)) return;
+
+    const chip = document.querySelector('[data-pay="' + billId + '"]');
+    const row = chip && chip.closest('.bill-row');
+
+    if (!row) {                       // not on screen — just regroup
+      paidThisVisit.delete(billId);
+      renderWeek();
+      return;
+    }
+
+    row.classList.add('filing');
+    setTimeout(() => {
+      paidThisVisit.delete(billId);
+      renderWeek();
+    }, 260);
+  }, 780);
 }
 
 function unpayBill(id) {
@@ -563,6 +611,7 @@ function unpayBill(id) {
   bill.paidMonth        = null;
   bill.paidAmount       = 0;
   bill.paidFromEnvelope = 0;
+  paidThisVisit.delete(bill.id);
 
   save(BILLS_KEY, bills);
   renderAll();
@@ -1032,7 +1081,7 @@ function weekStatus() {
   /* Exactly the bills sitting under "Fund now", so the warning can never
      disagree with the list underneath it. */
   const weekStart = new Date(currentWeek() + 'T00:00:00');
-  const soon = bills.filter(b => weekBucket(b, weekStart) === 'week0');
+  const soon = bills.filter(b => !isPaid(b) && weekBucket(b, weekStart) === 'week0');
 
   const shortfall = round2(soon
     .filter(b => !isFunded(b))
@@ -1144,7 +1193,7 @@ function renderWeek() {
     const overdue = isOverdue(b);
 
     return `
-      <div class="row bill-row ${paid ? 'paid' : ''}">
+      <div class="row bill-row ${paid ? 'paid' : ''}${justPaid === b.id ? ' celebrate' : ''}${justFunded === b.id ? ' just-funded' : ''}">
         <div class="row-main">
           <div class="row-title">${esc(b.name)}</div>
           <div class="row-sub ${overdue ? 'overdue' : ''}">
@@ -1688,6 +1737,8 @@ function showScreen(name) {
 
   window.scrollTo(0, 0);
   updateScrollEdge();
+  // arriving at the Week tab tidies away anything paid on a previous visit
+  if (name === 'week')    paidThisVisit.clear();
   if (name === 'week')    renderWeek();
   if (name === 'plan')    renderPlan();
   if (name === 'log')     renderLog();
