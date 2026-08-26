@@ -498,6 +498,158 @@ body.scrolled .nav {
 }
 
 /* ===========================================================
+   CALENDAR — look ahead, or back at what was paid when
+   =========================================================== */
+/* Icon button in the top-left of the header. The title stays optically
+   centred because the button is taken out of the flow entirely. */
+.nav-btn {
+  position: absolute;
+  left: 14px;
+  top: calc(env(safe-area-inset-top) + 14px);
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--fill-subtle);
+  color: var(--tint);
+  cursor: pointer;
+  transition: transform 0.18s cubic-bezier(0.32, 0.72, 0, 1), background 0.18s ease;
+}
+.nav-btn:active { transform: scale(0.92); background: var(--card-press); }
+
+.nav-btn svg {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* a dot when something falls due today */
+.nav-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+  border: 1.5px solid var(--bg);
+}
+.nav-dot[hidden] { display: none; }
+
+.cal {
+  margin-bottom: 10px;
+  padding: 12px 12px 14px;
+  border-radius: var(--r-card);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+}
+
+.cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px 8px;
+}
+.cal-month { font-size: 16px; font-weight: 650; }
+
+.cal-nav {
+  border: 0;
+  background: none;
+  color: var(--tint);
+  font-size: 22px;
+  line-height: 1;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+.cal-nav:active { opacity: 0.5; }
+
+.cal-dows,
+.cal-grid {
+  display: grid;
+  /* minmax(0, 1fr) rather than plain 1fr: a bare 1fr lets a column grow
+     to fit its content, and with square cells that made the columns
+     uneven and threw every date into the wrong weekday. */
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2px;
+}
+
+/* A fixed row height rather than square cells: grid items stretch to
+   their row by default, which fought with aspect-ratio and left the
+   first row twice as tall as the others. */
+.cal-grid { grid-auto-rows: 46px; }
+.cal-dows {
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-2);
+  text-align: center;
+}
+
+.cal-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.cal-cell.empty { pointer-events: none; }
+.cal-cell:active { background: var(--fill-subtle); }
+
+/* today gets a ring, the day you tapped gets filled in */
+.cal-cell.today .cal-num { font-weight: 750; color: var(--tint); }
+.cal-cell.picked { background: var(--tint); color: #fff; }
+.cal-cell.picked .cal-num { color: #fff; }
+
+.cal-dots { display: flex; gap: 3px; height: 5px; }
+.dot { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
+.dot.due  { background: var(--tint); }   /* a bill falls due */
+.dot.done { background: var(--green); }  /* something was recorded */
+.cal-cell.picked .dot.due  { background: #fff; }
+.cal-cell.picked .dot.done { background: #CFF7DA; }
+
+.cal-detail {
+  padding: 14px 16px 16px;
+  border-radius: var(--r-card);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+}
+.cal-day-title { font-size: 14px; font-weight: 650; margin-bottom: 6px; }
+
+.cal-line-head {
+  margin: 8px 0 3px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-2);
+}
+
+.cal-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.cal-line.quiet { color: var(--text-2); }
+.cal-line .up   { color: var(--green); }
+.cal-line .down { color: var(--red); }
+
+/* ===========================================================
    WEEK SCREEN
    =========================================================== */
 .banner {

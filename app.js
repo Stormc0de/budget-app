@@ -104,18 +104,32 @@ function currentMonth(date = new Date()) {
   return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0');
 }
 
-// Your week runs Thursday to Wednesday, so the ritual has a whole week
-// to be done in. This returns the date of the current week's Thursday,
-// which is the key the checkmarks are stamped with.
-const RITUAL_DAY = 4;                        // 0=Sunday … 4=Thursday
+/* Two different weeks, and they are not the same thing.
 
-function currentWeek(date = new Date()) {
+   RITUAL_DAY (Monday) is when the weekly checkmarks clear. Payroll lands
+   somewhere around Wednesday or Thursday, so a Monday start keeps an
+   early paycheck and an on-time one inside the same week — with a
+   Thursday start, getting paid on Wednesday fell on the last day of the
+   previous week and the tick vanished the next morning.
+
+   PAY_DAY (Thursday) is when money actually moves, and it still drives
+   every funding window: bills are funded the Thursday before they are
+   due, exactly as before. */
+const RITUAL_DAY = 1;    // 0=Sunday, 1=Monday
+const PAY_DAY    = 4;    // Thursday
+
+function weekStartingOn(dayIndex, date = new Date()) {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
-  const back = (d.getDay() - RITUAL_DAY + 7) % 7;   // days since Thursday
-  d.setDate(d.getDate() - back);
+  d.setDate(d.getDate() - ((d.getDay() - dayIndex + 7) % 7));
   return ymd(d);
 }
+
+// the Monday your current ritual week began
+const currentWeek = (date = new Date()) => weekStartingOn(RITUAL_DAY, date);
+
+// the Thursday that funds the coming bills
+const currentPayWeek = (date = new Date()) => weekStartingOn(PAY_DAY, date);
 
 /* ---------- How often a bill comes round --------------------
    cadence is a number of months: 1 monthly, 3 quarterly, 12 annual.
@@ -352,7 +366,7 @@ function toggleWeekSection(key) {
    heading keeps showing its count and total while folded, so nothing
    disappears without a trace. */
 function weekGroupedHtml(rowHtml) {
-  const weekStart = new Date(currentWeek() + 'T00:00:00');
+  const weekStart = new Date(currentPayWeek() + 'T00:00:00');
 
   const buckets = {};
   bills.forEach(bill => {
@@ -734,7 +748,7 @@ function billsFundedOn(payday, isCurrentCycle) {
 }
 
 function projectPaychecks(count = PROJECTION_WEEKS) {
-  const firstPayday = new Date(currentWeek() + 'T00:00:00');
+  const firstPayday = new Date(currentPayWeek() + 'T00:00:00');
 
   let balance = account.balance;
 
@@ -1080,7 +1094,7 @@ function weekStatus() {
 
   /* Exactly the bills sitting under "Fund now", so the warning can never
      disagree with the list underneath it. */
-  const weekStart = new Date(currentWeek() + 'T00:00:00');
+  const weekStart = new Date(currentPayWeek() + 'T00:00:00');
   const soon = bills.filter(b => !isPaid(b) && weekBucket(b, weekStart) === 'week0');
 
   const shortfall = round2(soon
@@ -1129,12 +1143,143 @@ function weekStatus() {
   };
 }
 
+/* ---------- 5d. The calendar ------------------------------
+   A month at a time: which bills fall due on each day, and what
+   actually happened on days already gone. Tapping a day shows both. */
+
+let calCursor = new Date();                 // which month is on screen
+let calSelected = ymd(new Date());          // which day is open
+
+const MONTH_NAMES = ['January','February','March','April','May','June',
+  'July','August','September','October','November','December'];
+
+/* Everything interesting in one month, gathered once rather than
+   recomputed for each of thirty-one cells. */
+function monthActivity(year, month) {
+  const due = {}, events = {};
+  const firstOfMonth = new Date(year, month, 1);
+
+  const addEvent = (entry, who) => {
+    const when = new Date(entry.at);
+    if (when.getFullYear() !== year || when.getMonth() !== month) return;
+    const key = ymd(when);
+    (events[key] = events[key] || []).push({ who, reason: entry.reason, delta: entry.delta });
+  };
+
+  bills.forEach(bill => {
+    if (bill.day !== 'any' && isDueMonth(bill, firstOfMonth)) {
+      const key = ymd(new Date(year, month, resolveDueDay(bill, firstOfMonth)));
+      (due[key] = due[key] || []).push(bill);
+    }
+    (bill.history || []).forEach(h => addEvent(h, bill.name));
+  });
+
+  account.history.forEach(h => addEvent(h, 'Bills account'));
+  cards.forEach(c => (c.history || []).forEach(h => addEvent(h, c.name)));
+
+  return { due, events };
+}
+
+function renderCalendar() {
+  const year = calCursor.getFullYear();
+  const month = calCursor.getMonth();
+
+  const todayDue = billsDueOn(ymd(new Date()));
+  $('cal-sub').textContent = todayDue.length
+    ? todayDue.length + (todayDue.length === 1 ? ' bill' : ' bills') + ' due today'
+    : 'Tap a day to see what happened';
+
+  $('cal-month').textContent = MONTH_NAMES[month] + ' ' + year;
+
+  // weekday headings start on Monday, matching your ritual week
+  $('cal-dows').innerHTML = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+    .map(d => `<span>${d}</span>`).join('');
+
+  const { due, events } = monthActivity(year, month);
+  const first = new Date(year, month, 1);
+  const blanks = (first.getDay() - RITUAL_DAY + 7) % 7;   // Monday-first grid
+  const total = daysInMonth(first);
+  const todayKey = ymd(new Date());
+
+  let cells = '';
+  for (let i = 0; i < blanks; i++) cells += '<span class="cal-cell empty"></span>';
+
+  for (let day = 1; day <= total; day++) {
+    const key = ymd(new Date(year, month, day));
+    const dueHere = due[key] || [];
+    const eventsHere = events[key] || [];
+    const classes = ['cal-cell'];
+    if (key === todayKey) classes.push('today');
+    if (key === calSelected) classes.push('picked');
+
+    cells += `<button class="${classes.join(' ')}" data-cal-day="${key}">
+        <span class="cal-num">${day}</span>
+        <span class="cal-dots">
+          ${dueHere.length ? '<i class="dot due"></i>' : ''}
+          ${eventsHere.length ? '<i class="dot done"></i>' : ''}
+        </span>
+      </button>`;
+  }
+  $('cal-grid').innerHTML = cells;
+
+  renderCalendarDay();
+}
+
+function renderCalendarDay() {
+  const picked = new Date(calSelected + 'T12:00:00');
+  const { events } = monthActivity(picked.getFullYear(), picked.getMonth());
+  const dueHere = billsDueOn(calSelected);
+  const eventsHere = events[calSelected] || [];
+
+  const heading = picked.toLocaleDateString(undefined,
+    { weekday: 'long', month: 'long', day: 'numeric' });
+
+  let html = `<div class="cal-day-title">${heading}</div>`;
+
+  if (dueHere.length) {
+    html += '<div class="cal-line-head">Due</div>' + dueHere.map(b =>
+      `<div class="cal-line"><span>${esc(b.name)}</span><span>${fmt(b.amount)}</span></div>`
+    ).join('');
+  }
+
+  if (eventsHere.length) {
+    html += '<div class="cal-line-head">What happened</div>' + eventsHere.map(e =>
+      `<div class="cal-line">
+         <span>${esc(e.who)} · ${esc(e.reason)}</span>
+         <span class="${e.delta >= 0 ? 'up' : 'down'}">${e.delta >= 0 ? '+' : '−'}${fmt(Math.abs(e.delta))}</span>
+       </div>`
+    ).join('');
+  }
+
+  if (!dueHere.length && !eventsHere.length) {
+    html += '<div class="cal-line quiet">Nothing due, nothing recorded.</div>';
+  }
+
+  $('cal-detail').innerHTML = html;
+}
+
+// Which bills fall due on one specific date, cadence included.
+function billsDueOn(dateStr) {
+  const when = new Date(dateStr + 'T12:00:00');
+  return bills.filter(bill => {
+    if (bill.day === 'any') return false;
+    if (!isDueMonth(bill, when)) return false;
+    return resolveDueDay(bill, when) === when.getDate();
+  });
+}
+
 /* ---------- 6. Rendering: the Week screen ----------------- */
 
 function renderWeek() {
   const weekStart = new Date(currentWeek() + 'T12:00:00');
-  $('week-sub').textContent = 'Week of ' + weekStart.toLocaleDateString(undefined,
-    { weekday: 'short', month: 'short', day: 'numeric' });
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  // the span you are inside, Monday through Sunday
+  const dayLabel = d => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  $('week-sub').textContent = 'Mon ' + dayLabel(weekStart) + ' – Sun ' + dayLabel(weekEnd);
+
+  // a dot on the calendar button when something falls due today
+  $('cal-dot').hidden = billsDueOn(ymd(new Date())).length === 0;
 
   // banner
   const status = weekStatus();
@@ -1725,7 +1870,8 @@ function renderAll() {
 
 function showScreen(name) {
   // detail screens keep their parent tab lit
-  const parent = { card: 'cards', bill: 'bills', account: 'week', log: 'plan' };
+  const parent = { card: 'cards', bill: 'bills', account: 'week',
+                   log: 'plan', calendar: 'week' };
   const litTab = parent[name] || name;
 
   document.querySelectorAll('.tab').forEach(t => {
@@ -1739,8 +1885,9 @@ function showScreen(name) {
   updateScrollEdge();
   // arriving at the Week tab tidies away anything paid on a previous visit
   if (name === 'week')    paidThisVisit.clear();
-  if (name === 'week')    renderWeek();
-  if (name === 'plan')    renderPlan();
+  if (name === 'week')     renderWeek();
+  if (name === 'calendar') renderCalendar();
+  if (name === 'plan')     renderPlan();
   if (name === 'log')     renderLog();
   if (name === 'bills')   renderBills();
   if (name === 'account') renderAccount();
@@ -2548,6 +2695,25 @@ $('edit-transfer').addEventListener('click', () => openSheet('transfer', null));
 $('edit-avalanche').addEventListener('click', () => openSheet('avalanche', null));
 $('edit-reserve').addEventListener('click', () => openSheet('reserve', null));
 $('edit-paycheck').addEventListener('click', () => openSheet('paycheck', null));
+
+$('cal-open').addEventListener('click', () => {
+  // always arrive on the month you are actually in
+  calCursor = new Date();
+  calSelected = ymd(new Date());
+  showScreen('calendar');
+});
+
+$('cal-back').addEventListener('click', () => showScreen('week'));
+
+$('cal-prev').addEventListener('click', () => {
+  calCursor = new Date(calCursor.getFullYear(), calCursor.getMonth() - 1, 1);
+  renderCalendar();
+});
+
+$('cal-next').addEventListener('click', () => {
+  calCursor = new Date(calCursor.getFullYear(), calCursor.getMonth() + 1, 1);
+  renderCalendar();
+});
 $('open-log').addEventListener('click', () => showScreen('log'));
 $('log-back').addEventListener('click', () => showScreen('plan'));
 $('plan-anchor').addEventListener('click', () => { renderAccount(); showScreen('account'); });
@@ -2608,6 +2774,12 @@ document.addEventListener('click', e => {
     if (b.variable) return openSheet('pay', b.id);
     if (b.amount <= 0) return alert('Give this bill a planned amount first.');
     return payBill(b.id, b.amount, `Paid ${fmt(b.amount)}`);
+  }
+
+  const calDay = e.target.closest('[data-cal-day]');
+  if (calDay) {
+    calSelected = calDay.dataset.calDay;
+    return renderCalendar();
   }
 
   const entryRow = e.target.closest('[data-entry]');

@@ -20,9 +20,17 @@
 </head>
 <body>
 
-  <!-- ============ WEEK SCREEN (the Thursday ritual) ============ -->
+  <!-- ============ WEEK SCREEN (the payday ritual) ============ -->
   <section class="screen" id="screen-week">
     <header class="nav">
+      <!-- Calendar lives up here, out of the way until you want it -->
+      <button class="nav-btn" id="cal-open" aria-label="Open calendar">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="3" y="5" width="18" height="16" rx="3"></rect>
+          <path d="M3 10h18M8 3v4M16 3v4" stroke-width="2"></path>
+        </svg>
+        <i class="nav-dot" id="cal-dot" hidden></i>
+      </button>
       <div class="nav-row">
         <h1>This Week</h1>
       </div>
@@ -55,7 +63,7 @@
         </div>
       </button>
 
-      <h2 class="section-title">Thursday ritual</h2>
+      <h2 class="section-title">Payday ritual</h2>
       <div class="list">
         <div class="row">
           <button class="check" data-ritual="paycheck" aria-label="Mark that you got paid">✓</button>
@@ -87,6 +95,30 @@
       <h2 class="section-title">Fund &amp; pay</h2>
       <div class="list" id="week-bills"></div>
       <p class="empty" id="week-empty" hidden>No bills yet. Add them on the Bills tab.</p>
+    </main>
+  </section>
+
+  <!-- ============ CALENDAR ============ -->
+  <section class="screen" id="screen-calendar" hidden>
+    <header class="nav">
+      <button class="back-btn" id="cal-back">‹ This Week</button>
+      <div class="nav-row">
+        <h1>Calendar</h1>
+      </div>
+      <p class="nav-sub" id="cal-sub"></p>
+    </header>
+
+    <main class="content">
+      <div class="cal" id="calendar">
+        <div class="cal-head">
+          <button class="cal-nav" id="cal-prev" aria-label="Previous month">‹</button>
+          <span class="cal-month" id="cal-month"></span>
+          <button class="cal-nav" id="cal-next" aria-label="Next month">›</button>
+        </div>
+        <div class="cal-dows" id="cal-dows"></div>
+        <div class="cal-grid" id="cal-grid"></div>
+      </div>
+      <div class="cal-detail" id="cal-detail"></div>
     </main>
   </section>
 

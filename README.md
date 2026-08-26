@@ -6,7 +6,7 @@ on the device, so no financial data ever leaves the phone.
 
 ## Screens
 
-- **Week** — the Thursday ritual: mark that you got paid, mark the weekly
+- **Week** — the payday ritual: mark that you got paid, mark the weekly
   transfer into the Bills account, then fund and check off bills.
 - **Bills** — manage bills and envelopes, grouped into Bills and Cards & loans.
 - **Debts** — credit card and loan balances with an adjustment history.
