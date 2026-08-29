@@ -69,6 +69,11 @@ anything that touches money.
 - **Avalanche**: highest APR first, ties to the lowest balance. I can pin a focus
   debt by hand; if a pinned debt is cleared it falls back to the rule.
 - **FUNDED and PAID are separate states.** A card balance drops only on PAID.
+- **Both are recorded per cycle, not per checkmark.** Each bill keeps a list of
+  the months it has been funded and paid for, so paying September ahead in
+  August adds to that list instead of overwriting August. Reading a bare
+  checkmark used to hide a bill due the 1st for the last days of the month
+  before — the Plan skipped it and the Week screen filed it under "Paid".
 - **Never auto-calculate interest from APR for real balances.** I enter the real
   figure from my statement. APR is only ever used for payoff projections.
 - **4.33 paychecks a month, never 4.**

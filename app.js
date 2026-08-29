@@ -294,8 +294,17 @@ const BUCKET_ORDER = ['overdue', 'week0', 'week1', 'week2', 'week3',
 const paidThisVisit = new Set();
 
 function weekBucket(bill, weekStart) {
-  // dealt with, and not just now — out of the way
-  if (isPaid(bill) && !paidThisVisit.has(bill.id)) return 'done';
+  /* Dealt with, and not just now — out of the way. But only when there
+     is genuinely nothing left to do: a bill whose next due date lands
+     inside this funding window belongs to the coming cycle, and that
+     cycle may still need funding even though this month's copy is paid.
+     That is a bill due the 1st, seen from the last Thursday before it. */
+  if (isPaid(bill) && !paidThisVisit.has(bill.id)) {
+    const next = nextDueDate(bill);
+    const windowEnd = new Date(weekStart);
+    windowEnd.setDate(windowEnd.getDate() + 7);
+    if (!next || next > windowEnd || isPaidFor(bill, currentMonth(next))) return 'done';
+  }
   if (bill.day === 'any')  return 'undated';   // envelopes, no due date
   if (isOverdue(bill))     return 'overdue';   // needs attention first
 
@@ -380,7 +389,7 @@ function weekGroupedHtml(rowHtml) {
 
     const sorted = sortByDue(items);
     const collapsed = isCollapsed(key);
-    const unpaid = sorted.filter(b => !isPaid(b));
+    const unpaid = sorted.filter(b => !isPaidFor(b, rowCycleMonth(b, key)));
     const total = round2(unpaid.reduce((sum, b) => sum + b.amount, 0));
 
     const summary = key === 'done'
@@ -395,13 +404,49 @@ function weekGroupedHtml(rowHtml) {
         <span class="week-count">${sorted.length}</span>
         <span class="week-sum">${summary}</span>
       </button>` +
-      (collapsed ? '' : sorted.map(rowHtml).join(''));
+      (collapsed ? '' : sorted.map(b => rowHtml(b, key)).join(''));
   }).join('');
 }
 
-// Both checkmarks are stamped with a month, so they clear on the 1st.
-const isFunded = bill => bill.fundedMonth === currentMonth();
-const isPaid   = bill => bill.paidMonth   === currentMonth();
+/* Each bill keeps a list of the cycles it has been funded and paid for,
+   one entry per month, with the amount beside it so undo is exact.
+   Paying ahead for September therefore adds to that list instead of
+   overwriting August — and because the app can tell the two apart, next
+   month's bill can no longer hide behind this month's checkmark. */
+const fundedEntry = (bill, month) => (bill.fundedFor || []).find(f => f.month === month) || null;
+const paidEntry   = (bill, month) => (bill.paidFor   || []).find(p => p.month === month) || null;
+
+const isFundedFor = (bill, month) => !!fundedEntry(bill, month);
+const isPaidFor   = (bill, month) => !!paidEntry(bill, month);
+
+// Asked without a month, both questions are about the one you are in.
+const isFunded = bill => isFundedFor(bill, currentMonth());
+const isPaid   = bill => isPaidFor(bill, currentMonth());
+
+/* The cycle a bill's next due date belongs to. A bill due September 1st
+   belongs to September while you are still standing in August, which is
+   what lets the last week of the month see it coming. */
+function dueCycleMonth(bill, from = new Date()) {
+  const due = bill.day === 'any' ? null : nextDueDate(bill, from);
+  return currentMonth(due || from);
+}
+
+/* Which cycle one row of the Week list is about. A row in a funding week
+   is about its next due date, which may fall next month; an overdue bill
+   and a filed-away one are about the month you are in. */
+function rowCycleMonth(bill, key) {
+  if (key === 'done' || key === 'overdue' || bill.day === 'any') return currentMonth();
+  return dueCycleMonth(bill);
+}
+
+/* "Funded" while you are inside the month, "Funded for September" when
+   you are working ahead, so the log still explains itself months later. */
+function monthNote(text, month) {
+  if (month === currentMonth()) return text;
+  const [year, index] = month.split('-').map(Number);
+  return text + ' for ' + MONTH_NAMES[index - 1] +
+         (year !== new Date().getFullYear() ? ' ' + year : '');
+}
 
 // Past its due date this month and still not paid. Bills with no fixed
 // date can never be overdue — that's the whole point of that setting.
@@ -490,9 +535,13 @@ function topUpAmount(bill) {
   return round2(Math.min(need, room));
 }
 
-function fundBill(id) {
+function fundBill(id, forMonth) {
   const bill = bills.find(b => b.id === id);
   if (!bill) return;
+
+  // the cycle this funding is for — this month unless you said otherwise
+  const month = forMonth || currentMonth();
+  if (isFundedFor(bill, month)) return;      // that cycle is already done
 
   if (bill.amount <= 0) {
     alert('Give this bill a planned amount first, then you can fund it.');
@@ -504,10 +553,10 @@ function fundBill(id) {
      bill actually costs. Money not needed stays in your cushion. */
   const amount = topUpAmount(bill);
 
-  bill.balance     = round2(bill.balance + amount);
-  bill.fundedMonth = currentMonth();
-  bill.fundedAmount = amount;               // remembered so undo is exact
-  if (amount > 0) billEntry(bill, amount, 'Funded');
+  bill.balance = round2(bill.balance + amount);
+  // the amount rides along with the cycle, so undo is exact
+  (bill.fundedFor = bill.fundedFor || []).push({ month, amount });
+  if (amount > 0) billEntry(bill, amount, monthNote('Funded', month));
 
   save(BILLS_KEY, bills);
 
@@ -516,15 +565,18 @@ function fundBill(id) {
   justFunded = null;
 }
 
-function unfundBill(id) {
+function unfundBill(id, forMonth) {
   const bill = bills.find(b => b.id === id);
   if (!bill) return;
 
-  const amount = bill.fundedAmount || bill.amount;
+  const month = forMonth || currentMonth();
+  const entry = fundedEntry(bill, month);
+  if (!entry) return;
+
+  const amount = entry.amount;
   bill.balance = round2(Math.max(0, bill.balance - amount));
-  bill.fundedMonth  = null;
-  bill.fundedAmount = 0;
-  billEntry(bill, -amount, 'Funding undone');
+  bill.fundedFor = bill.fundedFor.filter(f => f.month !== month);
+  billEntry(bill, -amount, monthNote('Funding undone', month));
 
   save(BILLS_KEY, bills);
   renderAll();
@@ -534,19 +586,20 @@ function unfundBill(id) {
    this bill's envelope first; anything the envelope can't cover comes
    out of the free cushion, which is what makes the cushion drop when
    you pay something you never funded. */
-function payBill(id, actual, note) {
+function payBill(id, actual, note, forMonth) {
   const bill = bills.find(b => b.id === id);
   if (!bill) return;
+
+  const month = forMonth || currentMonth();
+  if (isPaidFor(bill, month)) return;        // that cycle is already paid
 
   const fromEnvelope = Math.min(Math.max(0, bill.balance), actual);
 
   bill.balance = round2(bill.balance - fromEnvelope);
-  bill.paidMonth       = currentMonth();
-  bill.paidAmount      = actual;
-  bill.paidFromEnvelope = fromEnvelope;
+  (bill.paidFor = bill.paidFor || []).push({ month, amount: actual, fromEnvelope });
 
-  billEntry(bill, -fromEnvelope, note || `Paid ${fmt(actual)}`);
-  accountEntry(-actual, `Paid ${bill.name}`);
+  billEntry(bill, -fromEnvelope, monthNote(note || `Paid ${fmt(actual)}`, month));
+  accountEntry(-actual, monthNote(`Paid ${bill.name}`, month));
 
   // If this bill is a card or loan payment, the debt drops by the same
   // amount — no second trip to the Debts tab.
@@ -566,6 +619,8 @@ function payBill(id, actual, note) {
 
   /* Hold the row in place just long enough to watch it turn green,
      then slide it away into "Paid this month" where it belongs. */
+  if (month !== currentMonth()) { renderAll(); return; }
+
   paidThisVisit.add(bill.id);
   justPaid = bill.id;           // the fresh row picks this up …
   renderAll();
@@ -598,12 +653,16 @@ function fileAwayAfterCelebrating(billId) {
   }, 780);
 }
 
-function unpayBill(id) {
+function unpayBill(id, forMonth) {
   const bill = bills.find(b => b.id === id);
   if (!bill) return;
 
-  const amount = bill.paidAmount || 0;
-  const back   = bill.paidFromEnvelope || 0;
+  const month = forMonth || currentMonth();
+  const entry = paidEntry(bill, month);
+  if (!entry) return;
+
+  const amount = entry.amount;
+  const back   = entry.fromEnvelope;
 
   // put the debt back exactly as it was
   const linked = bill.linkedCardId && cards.find(c => c.id === bill.linkedCardId);
@@ -619,12 +678,10 @@ function unpayBill(id) {
   }
 
   bill.balance = round2(bill.balance + back);
-  billEntry(bill, back, 'Payment undone');
-  accountEntry(amount, `Payment undone: ${bill.name}`);
+  billEntry(bill, back, monthNote('Payment undone', month));
+  accountEntry(amount, monthNote(`Payment undone: ${bill.name}`, month));
 
-  bill.paidMonth        = null;
-  bill.paidAmount       = 0;
-  bill.paidFromEnvelope = 0;
+  bill.paidFor = bill.paidFor.filter(p => p.month !== month);
   paidThisVisit.delete(bill.id);
 
   save(BILLS_KEY, bills);
@@ -718,11 +775,16 @@ function billsFundedOn(payday, isCurrentCycle) {
   const carriesEnvelopes = payday.getTime() === first.getTime();
 
   return bills.filter(bill => {
-    // Money for an already-paid bill has physically left the account, so
-    // in the cycle you are standing in it must not be counted again.
-    if (isCurrentCycle && isPaid(bill)) return false;
-
-    if (bill.day === 'any') return carriesEnvelopes;
+    /* Money for an already-paid bill has physically left the account, so
+       it must not be counted again. What matters is the cycle the bill
+       falls due in, not the month the payday sits in: a bill due the 1st,
+       seen from the last Thursday of the month before, is paid for the
+       month you are standing in and still owed for the month you are
+       funding. Reading the checkmark alone hid it completely. */
+    if (bill.day === 'any') {
+      if (isPaidFor(bill, currentMonth(payday))) return false;
+      return carriesEnvelopes;
+    }
 
     /* Something less frequent than monthly still needs its slice putting
        aside every month. In a month it actually falls due it appears in
@@ -730,21 +792,37 @@ function billsFundedOn(payday, isCurrentCycle) {
        in every other month it rides with the envelopes on the first
        Thursday. */
     if (cadenceOf(bill) > 1 && !isDueMonth(bill, payday)) {
+      if (isPaidFor(bill, currentMonth(payday))) return false;
       return carriesEnvelopes;
     }
 
     /* In the cycle you are standing in, also sweep up anything still
        unpaid that was due earlier or is due today. Its funding Thursday
        has passed, but the money has not actually left yet — leaving it
-       out would make every week after this one read too rich. */
+       out would make every week after this one read too rich. This can
+       only add a bill, never drop one: a later due date in the same
+       window is judged on its own cycle below. */
     if (isCurrentCycle && isDueMonth(bill, payday)) {
       const dueThisMonth = new Date(payday.getFullYear(), payday.getMonth(),
                                     resolveDueDay(bill, payday));
-      if (dueThisMonth <= windowEnd) return true;
+      if (dueThisMonth <= windowEnd && !isPaidFor(bill, currentMonth(payday))) return true;
     }
 
-    return dueDatesInWindow(bill, payday, windowEnd).length > 0;
+    const dates = dueDatesInWindow(bill, payday, windowEnd);
+    if (!dates.length) return false;
+    return !dates.every(d => isPaidFor(bill, currentMonth(d)));
   });
+}
+
+/* Which cycle one payday is working on for one bill: the month it falls
+   due in when that date lands inside the window, otherwise the month the
+   payday itself sits in (envelopes, and slices of anything non-monthly). */
+function cycleMonthOf(bill, payday, windowEnd) {
+  if (bill.day !== 'any') {
+    const dates = dueDatesInWindow(bill, payday, windowEnd);
+    if (dates.length) return currentMonth(dates[0]);
+  }
+  return currentMonth(payday);
 }
 
 function projectPaychecks(count = PROJECTION_WEEKS) {
@@ -782,9 +860,15 @@ function projectPaychecks(count = PROJECTION_WEEKS) {
     let undatedTotal = 0;    // money that only moves into an envelope
     const listed = [];
 
+    const windowEnd = new Date(payday);
+    windowEnd.setDate(windowEnd.getDate() + 7);
+
     billsFundedOn(payday, current).forEach(bill => {
-      // in the cycle you are standing in, anything already funded needs nothing
-      const alreadyFunded = current && isFunded(bill);
+      /* Anything already funded for the cycle this payday works on needs
+         nothing more — including an envelope filled ahead of the month
+         change, whose money is already sitting in bill.balance. */
+      const cycleMonth = cycleMonthOf(bill, payday, windowEnd);
+      const alreadyFunded = isFundedFor(bill, cycleMonth);
 
       const periodic = cadenceOf(bill) > 1;
       const need = periodic ? monthlySlice(bill) : bill.amount;
@@ -1095,10 +1179,11 @@ function weekStatus() {
   /* Exactly the bills sitting under "Fund now", so the warning can never
      disagree with the list underneath it. */
   const weekStart = new Date(currentPayWeek() + 'T00:00:00');
-  const soon = bills.filter(b => !isPaid(b) && weekBucket(b, weekStart) === 'week0');
+  const soon = bills.filter(b => weekBucket(b, weekStart) === 'week0'
+                             && !isPaidFor(b, rowCycleMonth(b, 'week0')));
 
   const shortfall = round2(soon
-    .filter(b => !isFunded(b))
+    .filter(b => !isFundedFor(b, rowCycleMonth(b, 'week0')))
     .reduce((sum, b) => sum + b.amount, 0));
 
   if (cushion < 0) {
@@ -1237,9 +1322,45 @@ function renderCalendarDay() {
   let html = `<div class="cal-day-title">${heading}</div>`;
 
   if (dueHere.length) {
-    html += '<div class="cal-line-head">Due</div>' + dueHere.map(b =>
-      `<div class="cal-line"><span>${esc(b.name)}</span><span>${fmt(b.amount)}</span></div>`
-    ).join('');
+    /* Everything on this day belongs to this day's month, so the chips
+       can act on that cycle without any of the Week screen's ambiguity
+       about which month a row is really about. */
+    const month = calSelected.slice(0, 7);
+    const ahead = month > currentMonth();
+    const past  = month < currentMonth();
+
+    html += '<div class="cal-line-head">Due</div>' + dueHere.map(b => {
+      const funded = isFundedFor(b, month), paid = isPaidFor(b, month);
+
+      /* Paying ahead spends money the envelope is holding — never the
+         cushion. Weeks early that distinction is the whole safeguard,
+         so the Pay chip waits until the envelope covers the bill. */
+      const covered = round2(b.balance) + 0.001 >= b.amount;
+      const canPay  = paid || !ahead || covered;
+
+      const chips = past ? '' : `
+        <div class="chips cal-chips">
+          <button class="chip ${funded ? 'on-fund' : ''}" data-fund="${b.id}" data-for-month="${month}">
+            ${funded ? '✓&nbsp;Funded' : 'Fund'}
+          </button>
+          ${canPay
+            ? `<button class="chip ${paid ? 'on-paid' : ''}" data-pay="${b.id}" data-for-month="${month}">
+                 ${paid ? '✓&nbsp;Paid' : 'Pay'}
+               </button>`
+            : '<span class="chip-note">fund it first</span>'}
+        </div>`;
+
+      const banked = b.balance > 0 ? ` · ${fmt(b.balance)} banked` : '';
+      return `
+        <div class="cal-bill">
+          <div class="cal-line">
+            <span>${esc(b.name)}${ahead ? ' <em class="cal-ahead">ahead</em>' : ''}</span>
+            <span>${fmt(b.amount)}</span>
+          </div>
+          <div class="cal-line quiet"><span>${esc(dueLabel(b))}${banked}</span></div>
+          ${chips}
+        </div>`;
+    }).join('');
   }
 
   if (eventsHere.length) {
@@ -1328,10 +1449,16 @@ function renderWeek() {
   }
 
   // fund & pay list, split into weeks by due date
-  $('week-bills').innerHTML = weekGroupedHtml(b => {
-    const funded = isFunded(b), paid = isPaid(b);
+  $('week-bills').innerHTML = weekGroupedHtml((b, key) => {
+    /* A row under "Fund now" late in the month may be about a bill due
+       the 1st — so the chips answer for that cycle, not for the month
+       you happen to be standing in. */
+    const month  = rowCycleMonth(b, key);
+    const ahead  = month !== currentMonth();
+    const funded = isFundedFor(b, month), paid = isPaidFor(b, month);
     // nothing to pay in a month a quarterly or annual bill is not due
-    const payable = b.day === 'any' || isDueMonth(b, new Date());
+    const payable = b.day === 'any' ||
+                    isDueMonth(b, new Date(month + '-01T12:00:00'));
     const banked = b.balance > 0
       ? ` · ${fmt(b.balance)}${b.target > 0 ? ' of ' + fmt(b.target) : ''} banked`
       : '';
@@ -1342,14 +1469,14 @@ function renderWeek() {
         <div class="row-main">
           <div class="row-title">${esc(b.name)}</div>
           <div class="row-sub ${overdue ? 'overdue' : ''}">
-            ${overdue ? 'Overdue · ' : ''}${dueLabel(b)} · ${fmt(b.amount)}${b.variable ? ' planned' : ''}${cadenceOf(b) > 1 ? ' · ' + fmt(monthlySlice(b)) + '/mo' : ''}${banked}
+            ${overdue ? 'Overdue · ' : ''}${ahead ? 'Next month · ' : ''}${dueLabel(b)} · ${fmt(b.amount)}${b.variable ? ' planned' : ''}${cadenceOf(b) > 1 ? ' · ' + fmt(monthlySlice(b)) + '/mo' : ''}${banked}
           </div>
         </div>
         <div class="chips">
-          <button class="chip ${funded ? 'on-fund' : ''}" data-fund="${b.id}">
+          <button class="chip ${funded ? 'on-fund' : ''}" data-fund="${b.id}" data-for-month="${month}">
             ${funded ? '✓&nbsp;Funded' : 'Fund'}
           </button>
-          ${payable ? `<button class="chip ${paid ? 'on-paid' : ''}" data-pay="${b.id}">
+          ${payable ? `<button class="chip ${paid ? 'on-paid' : ''}" data-pay="${b.id}" data-for-month="${month}">
             ${paid ? '✓&nbsp;Paid' : 'Pay'}
           </button>` : '<span class="chip-note">saving</span>'}
         </div>
@@ -1362,7 +1489,7 @@ function renderWeek() {
 /* ---------- 7. Rendering: Bills list and one bill --------- */
 
 function renderBills() {
-  $('bills-list').innerHTML = groupedHtml(b => {
+  $('bills-list').innerHTML = groupedHtml(b => {   // the master list is this month
     const paid = isPaid(b), funded = isFunded(b);
     // where this month stands, shown right on the master list
     const state = paid   ? '<span class="tag-paid">✓ Paid</span>'
@@ -1863,6 +1990,8 @@ function renderAll() {
   renderAccount();
   if (openBillId) renderBillDetail();
   if (openCardId) renderCardDetail();
+  // funding or paying from the calendar has to redraw the day underneath it
+  if (!$('screen-calendar').hidden) renderCalendar();
   renderBackupInfo();
 }
 
@@ -1905,8 +2034,8 @@ let editing = { type: 'bill', id: null };
 const SHEET_GROUPS = ['card', 'bill', 'pay', 'adjust', 'account', 'transfer',
                       'avalanche', 'entry', 'reserve', 'paycheck'];
 
-function openSheet(type, id) {
-  editing = { type, id };
+function openSheet(type, id, forMonth) {
+  editing = { type, id, forMonth: forMonth || currentMonth() };
   const isNew = !id;
 
   const titles = {
@@ -2210,8 +2339,7 @@ function saveBill() {
       id: newId(),
       ...data,
       balance: 0,
-      fundedMonth: null, fundedAmount: 0,
-      paidMonth: null,   paidAmount: 0, paidFromEnvelope: 0,
+      fundedFor: [], paidFor: [],
       history: []
     });
   }
@@ -2229,7 +2357,7 @@ function savePayment() {
   if (actual <= 0) return showError('Please enter an amount greater than zero.');
 
   const note = $('pay-note').value.trim();
-  payBill(editing.id, actual, note || `Paid ${fmt(actual)}`);
+  payBill(editing.id, actual, note || `Paid ${fmt(actual)}`, editing.forMonth);
   closeSheet();
 }
 
@@ -2526,6 +2654,41 @@ function cleanHistory(list) {
 const monthStamp = value =>
   typeof value === 'string' && /^\d{4}-\d{2}$/.test(value) ? value : null;
 
+/* Bills used to remember a single funded month and a single paid month,
+   each with one amount beside it. They now keep a list, one entry per
+   cycle, so paying next month ahead no longer overwrites this month's
+   record. Anything written by the older version — including an older
+   backup file — is read here and turned into a one-item list, so those
+   files keep restoring correctly and never become a dead end. */
+function cleanCycles(bill, kind) {
+  const paid = kind === 'paid';
+  const list = bill && bill[paid ? 'paidFor' : 'fundedFor'];
+
+  const clean = entry => {
+    const month = monthStamp(entry && entry.month);
+    if (!month) return null;
+    const out = { month, amount: toNumber(entry && entry.amount) };
+    if (paid) out.fromEnvelope = toNumber(entry && entry.fromEnvelope);
+    return out;
+  };
+
+  if (Array.isArray(list)) {
+    const seen = new Set();
+    return list.map(clean).filter(entry => {
+      if (!entry || seen.has(entry.month)) return false;   // one per cycle
+      seen.add(entry.month);
+      return true;
+    });
+  }
+
+  // the older shape: a single month with a single amount
+  const month = monthStamp(bill && bill[paid ? 'paidMonth' : 'fundedMonth']);
+  if (!month) return [];
+  const out = { month, amount: toNumber(bill && bill[paid ? 'paidAmount' : 'fundedAmount']) };
+  if (paid) out.fromEnvelope = toNumber(bill && bill.paidFromEnvelope);
+  return [out];
+}
+
 const weekStamp = value =>
   typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
 
@@ -2562,11 +2725,8 @@ function cleanBills(list) {
       cadence:  cadenceOf(b),
       anchorMonth: Math.min(11, Math.max(0, Math.round(toNumber(b && b.anchorMonth)))),
       balance:  toNumber(b && b.balance),
-      fundedMonth:  monthStamp(b && b.fundedMonth),
-      fundedAmount: toNumber(b && b.fundedAmount),
-      paidMonth:    monthStamp(b && b.paidMonth),
-      paidAmount:   toNumber(b && b.paidAmount),
-      paidFromEnvelope: toNumber(b && b.paidFromEnvelope),
+      fundedFor: cleanCycles(b, 'funded'),
+      paidFor:   cleanCycles(b, 'paid'),
       history:  cleanHistory(b && b.history)
     };
   });
@@ -2762,18 +2922,21 @@ document.addEventListener('click', e => {
   if (fund) {
     const b = bills.find(x => x.id === fund.dataset.fund);
     if (!b) return;
-    return isFunded(b) ? unfundBill(b.id) : fundBill(b.id);
+    // every chip carries the cycle it was drawn for
+    const month = fund.dataset.forMonth || currentMonth();
+    return isFundedFor(b, month) ? unfundBill(b.id, month) : fundBill(b.id, month);
   }
 
   const pay = e.target.closest('[data-pay]');
   if (pay) {
     const b = bills.find(x => x.id === pay.dataset.pay);
     if (!b) return;
-    if (isPaid(b)) return unpayBill(b.id);
+    const month = pay.dataset.forMonth || currentMonth();
+    if (isPaidFor(b, month)) return unpayBill(b.id, month);
     // variable bills ask for the real figure; fixed ones just pay the plan
-    if (b.variable) return openSheet('pay', b.id);
+    if (b.variable) return openSheet('pay', b.id, month);
     if (b.amount <= 0) return alert('Give this bill a planned amount first.');
-    return payBill(b.id, b.amount, `Paid ${fmt(b.amount)}`);
+    return payBill(b.id, b.amount, `Paid ${fmt(b.amount)}`, month);
   }
 
   const calDay = e.target.closest('[data-cal-day]');
