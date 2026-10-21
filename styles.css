@@ -197,7 +197,16 @@ button, input, select {
    legibility depends on. */
 /* A bar of fixed height. It must never change size: it is in the flow
    above the content, so anything that grows or shrinks it drags every
-   row below it up or down while you are reading them. */
+   row below it up or down while you are reading them.
+
+   It is also invisible until it has something to do. At rest there is
+   nothing underneath it — the large title sits below, in the content —
+   so a tinted strip there is just a band across the top of the screen
+   cutting the heading off. The glass arrives with the first scroll,
+   when there are rows passing under it and a small title to carry. The
+   blur stays on throughout: at rest it has only the background's own
+   gradient to work on, so it shows nothing, and leaving it in place is
+   what lets the tint fade in rather than snap. */
 .nav {
   position: sticky;
   top: 0;
@@ -207,7 +216,7 @@ button, input, select {
   justify-content: center;
   height: calc(env(safe-area-inset-top) + 44px);
   padding: env(safe-area-inset-top) 56px 0;
-  background: var(--glass);
+  background: transparent;
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
   transition: background 0.25s ease, box-shadow 0.25s ease;
