@@ -1377,11 +1377,13 @@ function renderCalendarDay() {
 
       const chips = past ? '' : `
         <div class="chips cal-chips">
-          <button class="chip ${funded ? 'on-fund' : ''}" data-fund="${b.id}" data-for-month="${month}">
+          <button class="chip ${funded ? 'on-fund' : ''}" data-fund="${b.id}" data-for-month="${month}"
+                  aria-label="${funded ? 'Unfund' : 'Fund'} ${esc(b.name)}">
             ${funded ? '✓&nbsp;Funded' : 'Fund'}
           </button>
           ${canPay
-            ? `<button class="chip ${paid ? 'on-paid' : ''}" data-pay="${b.id}" data-for-month="${month}">
+            ? `<button class="chip ${paid ? 'on-paid' : ''}" data-pay="${b.id}" data-for-month="${month}"
+                  aria-label="${paid ? 'Undo the payment of' : 'Pay'} ${esc(b.name)}">
                  ${paid ? '✓&nbsp;Paid' : 'Pay'}
                </button>`
             : '<span class="chip-note">fund it first</span>'}
@@ -1538,10 +1540,12 @@ function renderWeek() {
             ${overduePrefix}${ahead ? 'Next month · ' : ''}${dueLabel(b)}${b.variable ? ' · varies' : ''}${cadenceOf(b) > 1 ? ' · ' + fmt(monthlySlice(b)) + '/mo' : ''}
           </div>
           <div class="chips">
-            <button class="chip ${funded ? 'on-fund' : ''}" data-fund="${b.id}" data-for-month="${month}">
+            <button class="chip ${funded ? 'on-fund' : ''}" data-fund="${b.id}" data-for-month="${month}"
+                    aria-label="${funded ? 'Unfund' : 'Fund'} ${esc(b.name)}">
               ${funded ? '✓&nbsp;Funded' : 'Fund'}
             </button>
-            ${payable ? `<button class="chip ${paid ? 'on-paid' : ''}" data-pay="${b.id}" data-for-month="${month}">
+            ${payable ? `<button class="chip ${paid ? 'on-paid' : ''}" data-pay="${b.id}" data-for-month="${month}"
+                    aria-label="${paid ? 'Undo the payment of' : 'Pay'} ${esc(b.name)}">
               ${paid ? '✓&nbsp;Paid' : 'Pay'}
             </button>` : '<span class="chip-note">saving</span>'}
           </div>
@@ -2289,12 +2293,69 @@ function openSheet(type, id, forMonth) {
 
   $('backdrop').hidden = false;
   $('sheet').hidden = false;
+  sizeMoneyFields(type);
+  if (SINGLE_VALUE_SHEETS.includes(type) || isNew) focusFirstField(type);
 }
 
 function closeSheet() {
-  $('sheet').hidden = true;
+  const sheet = $('sheet');
+  sheet.hidden = true;
+  sheet.style.bottom = '';
+  sheet.style.maxHeight = '';
   $('backdrop').hidden = true;
   if (document.activeElement) document.activeElement.blur();
+}
+
+/* Sheets that exist to take one figure open with that figure already
+   selected, so changing 484 to 500 is a tap and three keys instead of
+   tapping in and backspacing over what is there. A long form does the
+   same only when it is new — when you are editing one you may well be
+   heading for a field further down, and the keyboard would be sitting
+   in front of it. */
+const SINGLE_VALUE_SHEETS = ['pay', 'adjust', 'account', 'transfer',
+                             'avalanche', 'entry', 'reserve', 'paycheck'];
+
+function focusFirstField(type) {
+  const field = $('fields-' + type).querySelector('input[type="text"]');
+  if (!field) return;
+  /* Done inside the tap that opened the sheet, not after it: iOS only
+     raises the keyboard for a focus it can trace back to a gesture. */
+  field.focus();
+  field.select();
+}
+
+/* The $ has to sit against its number rather than drift off to the left
+   of an empty box, so the box is only ever as wide as what is in it. */
+function sizeMoneyField(input) {
+  const shown = input.value || input.placeholder || '';
+  // a little over the content, so the caret at the end has somewhere to sit
+  input.style.width = Math.max(3, shown.length) + 0.6 + 'ch';
+}
+
+function sizeMoneyFields(type) {
+  $('fields-' + type).querySelectorAll('.money input').forEach(sizeMoneyField);
+}
+
+document.addEventListener('input', e => {
+  if (e.target.matches('.field.money input')) sizeMoneyField(e.target);
+});
+
+/* iOS slides the keyboard over the page without moving anything on it,
+   so a sheet pinned to the bottom of the screen ends up underneath.
+   The visual viewport reports how much room is actually left, and the
+   sheet rides on top of whatever the keyboard has taken. */
+function liftSheetAboveKeyboard() {
+  const sheet = $('sheet');
+  const vv = window.visualViewport;
+  if (!vv || sheet.hidden) return;
+  const covered = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+  sheet.style.bottom = covered + 'px';
+  sheet.style.maxHeight = Math.round(vv.height - 24) + 'px';
+}
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', liftSheetAboveKeyboard);
+  window.visualViewport.addEventListener('scroll', liftSheetAboveKeyboard);
 }
 
 function showError(message) {
@@ -2986,10 +3047,15 @@ async function importBackup(file) {
 /* A pill above the tab bar that says its piece and fades. One at a
    time: a new message takes over from whatever is showing. */
 let toastTimer = null;
+let toastAction = null;
 
-function showToast(message) {
+/* Pass onTap and the pill becomes something you can act on, and waits
+   longer before giving up on you. */
+function showToast(message, onTap) {
   const el = $('toast');
   el.textContent = message;
+  toastAction = onTap || null;
+  el.classList.toggle('tappable', !!onTap);
   el.hidden = false;
 
   /* Restart the slide even when a toast is already up. Reading
@@ -3002,11 +3068,12 @@ function showToast(message) {
   document.body.classList.add('toasting');
 
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(hideToast, 2600);
+  toastTimer = setTimeout(hideToast, onTap ? 7000 : 2600);
 }
 
 function hideToast() {
   const el = $('toast');
+  toastAction = null;
   el.classList.remove('in');
   document.body.classList.remove('toasting');
   // leave it in place until the fade has finished
@@ -3038,6 +3105,19 @@ function closeConfirm(answer) {
 }
 
 /* ---------- 14. Wiring up the buttons --------------------- */
+
+$('toast').addEventListener('click', () => {
+  if (!toastAction) return;
+  const act = toastAction;
+  hideToast();
+  act();
+});
+
+/* Dragging the dimmed area behind a sheet must not scroll the screen
+   underneath it. The sheet's own overscroll-behavior does the rest. */
+[$('backdrop'), $('action-backdrop')].forEach(el => {
+  el.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+});
 
 $('action-confirm').addEventListener('click', () => closeConfirm(true));
 $('action-cancel').addEventListener('click', () => closeConfirm(false));
@@ -3225,7 +3305,20 @@ document.querySelectorAll('.screen')
   .forEach(s => syncCompactTitle(s.id.replace('screen-', '')));
 
 if ('serviceWorker' in navigator) {
+  /* Noted before registering: on a first ever visit there is no
+     controller to replace, so taking one on is an install, not an
+     update, and there is nothing to tell you about. */
+  const hadController = !!navigator.serviceWorker.controller;
+
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+
+  /* A new version has installed and taken over. sw.js calls
+     skipWaiting, so the files saved on the phone are already the new
+     ones — the page only needs reading again to run them. */
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController) return;
+    showToast('Updated — tap to reload', () => window.location.reload());
   });
 }

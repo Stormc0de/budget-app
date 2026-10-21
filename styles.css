@@ -136,6 +136,10 @@ body {
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
+  /* The app is almost all numbers. Setting this once means every figure
+     lines up in its column, including the ones inside banners, subtitles
+     and notes that were never marked up as money. */
+  font-variant-numeric: tabular-nums;
 }
 
 /* A faint colour wash behind everything. Glass needs something with
@@ -274,6 +278,9 @@ body.compact .nav-compact { opacity: 1; transform: translateY(0); }
 
 /* ===========================================================
    FLOATING ADD BUTTON
+   Tried in the top right of the bar, where iOS puts it, and moved
+   back: the bar sits above the large title, so a button in it reads
+   as a line of its own breaking in over the heading.
    =========================================================== */
 .fab {
   position: fixed;
@@ -295,6 +302,9 @@ body.compact .nav-compact { opacity: 1; transform: translateY(0); }
   cursor: pointer;
 }
 .fab:active { transform: scale(0.92); opacity: 0.92; }
+
+/* A toast would otherwise come up underneath it */
+body.toasting .fab { opacity: 0; pointer-events: none; }
 
 /* ===========================================================
    LISTS + ROWS  (content layer: solid, not glass)
@@ -588,6 +598,7 @@ button.row:active { background: var(--card-press); }
   transition: transform 0.18s cubic-bezier(0.32, 0.72, 0, 1), background 0.18s ease;
 }
 .nav-btn:active { transform: scale(0.92); background: var(--card-press); }
+
 
 .nav-btn svg {
   width: 21px;
@@ -1254,6 +1265,10 @@ button.row:active { background: var(--card-press); }
   z-index: 31;
   max-height: 90%;
   overflow-y: auto;
+  /* Scrolling the sheet to its end must not carry on into the page
+     behind it. Together with the backdrop refusing to be dragged, this
+     is what holds the screen still while a sheet is open. */
+  overscroll-behavior: contain;
   background: var(--glass-strong);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
@@ -1265,6 +1280,17 @@ button.row:active { background: var(--card-press); }
 .sheet[hidden] { display: none; }
 @keyframes slide-up { from { transform: translateY(100%); } }
 
+/* The small pill iOS puts on a sheet you can pull down. It says the
+   sheet is dismissable without having to spell it out. */
+.grabber {
+  width: 36px;
+  height: 5px;
+  margin: 8px auto 0;
+  border-radius: var(--r-pill);
+  background: var(--text-2);
+  opacity: 0.3;
+}
+
 .sheet-bar {
   position: sticky;
   top: 0;
@@ -1273,7 +1299,7 @@ button.row:active { background: var(--card-press); }
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 16px 18px 14px;
+  padding: 10px 18px 14px;
   background: transparent;
 }
 .sheet-bar h2 { margin: 0; font-size: 17px; font-weight: 650; }
@@ -1324,6 +1350,26 @@ button.row:active { background: var(--card-press); }
   text-align: right;
   padding: 0;
   color: inherit;
+}
+
+/* A money field reads as one unit: the $ sits against the number
+   rather than drifting off to the left of an empty box, so the input
+   is sized to its contents and the pair is pushed right together. */
+/* The row's 12px gap would otherwise open up between the $ and its
+   number. The label is still held apart from them by the auto margin
+   below, so closing the gap costs nothing elsewhere. */
+.field.money { column-gap: 0; }
+
+.field.money .currency {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--text-2);
+}
+.field.money input {
+  flex: 0 0 auto;
+  width: 4ch;                 /* a starting width; JS sizes it to the value */
+  text-align: left;
+  padding: 0;
 }
 .field select { -webkit-appearance: none; appearance: none; cursor: pointer; }
 
@@ -1452,6 +1498,9 @@ button.row:active { background: var(--card-press); }
    =========================================================== */
 .action-backdrop { z-index: 40; }
 
+/* same containment as the edit sheet */
+.action-sheet { overscroll-behavior: contain; }
+
 .action-sheet {
   position: fixed;
   left: 10px;
@@ -1541,6 +1590,10 @@ button.row:active { background: var(--card-press); }
 .toast[hidden] { display: none; }
 .toast.in { opacity: 1; transform: translateY(0); }
 
-/* No toast is raised from a screen with the + button today, but if one
-   ever is, the button steps aside rather than sitting on top of it. */
-body.toasting .fab { opacity: 0; pointer-events: none; }
+/* A toast carrying an action takes taps, and says so in the tint. */
+.toast.tappable {
+  pointer-events: auto;
+  color: var(--tint);
+  font-weight: 650;
+  cursor: pointer;
+}

@@ -312,6 +312,7 @@
     </main>
 
     <button class="fab" id="add-bill" aria-label="Add bill">+</button>
+
   </section>
 
   <!-- ============ ONE BILL'S ENVELOPE + HISTORY ============ -->
@@ -384,6 +385,7 @@
     </main>
 
     <button class="fab" id="add-card" aria-label="Add debt">+</button>
+
   </section>
 
   <!-- ============ ONE DEBT'S DETAIL + HISTORY ============
@@ -517,6 +519,7 @@
   <div class="sheet-backdrop" id="backdrop" hidden></div>
 
   <div class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <div class="grabber" aria-hidden="true"></div>
     <div class="sheet-bar">
       <button class="link-btn" id="sheet-cancel">Cancel</button>
       <h2 id="sheet-title">New Bill</h2>
@@ -530,16 +533,18 @@
           <span>Name</span>
           <input type="text" id="card-name" placeholder="Chase Freedom" autocomplete="off">
         </label>
-        <label class="field" id="card-balance-row">
+        <label class="field money" id="card-balance-row">
           <span>Balance</span>
+          <span class="currency">$</span>
           <input type="text" inputmode="decimal" id="card-balance" placeholder="0.00">
         </label>
         <label class="field">
           <span>Interest %</span>
           <input type="text" inputmode="decimal" id="card-apr" placeholder="0.00">
         </label>
-        <label class="field">
+        <label class="field money">
           <span>Min. Payment</span>
+          <span class="currency">$</span>
           <input type="text" inputmode="decimal" id="card-min" placeholder="0.00">
         </label>
       </div>
@@ -556,8 +561,9 @@
           <span>Name</span>
           <input type="text" id="bill-name" placeholder="Electric" autocomplete="off">
         </label>
-        <label class="field">
+        <label class="field money">
           <span>Planned</span>
+          <span class="currency">$</span>
           <input type="text" inputmode="decimal" id="bill-amount" placeholder="0.00">
         </label>
         <label class="field">
@@ -588,8 +594,9 @@
           <span>Due in</span>
           <select id="bill-month"></select>
         </label>
-        <label class="field" id="bill-target-row" hidden>
+        <label class="field money" id="bill-target-row" hidden>
           <span>Keep topped to</span>
+          <span class="currency">$</span>
           <input type="text" inputmode="decimal" id="bill-target" placeholder="0.00">
         </label>
         <label class="field" id="bill-linked-row" hidden>
@@ -605,8 +612,9 @@
 
       <!-- Entering what a variable bill actually came to -->
       <div class="field-group" id="fields-pay" hidden>
-        <label class="field">
+        <label class="field money">
           <span>Actual amount</span>
+          <span class="currency">$</span>
           <input type="text" inputmode="decimal" id="pay-amount" placeholder="0.00">
         </label>
         <label class="field">
@@ -625,8 +633,9 @@
             <button type="button" class="seg" data-mode="set">Set to</button>
           </div>
         </div>
-        <label class="field">
+        <label class="field money">
           <span id="adjust-amount-label">Amount</span>
+          <span class="currency">$</span>
           <input type="text" inputmode="decimal" id="adjust-amount" placeholder="0.00">
         </label>
         <label class="field">
@@ -645,8 +654,9 @@
             <button type="button" class="seg" data-amode="set">Set to</button>
           </div>
         </div>
-        <label class="field">
+        <label class="field money">
           <span id="account-amount-label">Amount</span>
+          <span class="currency">$</span>
           <input type="text" inputmode="decimal" id="account-amount" placeholder="0.00">
         </label>
         <label class="field">
@@ -658,8 +668,9 @@
 
       <!-- Weekly transfer amount -->
       <div class="field-group" id="fields-transfer" hidden>
-        <label class="field">
+        <label class="field money">
           <span>Weekly amount</span>
+          <span class="currency">$</span>
           <input type="text" inputmode="decimal" id="transfer-input" placeholder="484">
         </label>
       </div>
@@ -670,8 +681,9 @@
 
       <!-- Weekly extra toward the highest-interest debt -->
       <div class="field-group" id="fields-avalanche" hidden>
-        <label class="field">
+        <label class="field money">
           <span>Weekly extra</span>
+          <span class="currency">$</span>
           <input type="text" inputmode="decimal" id="avalanche-input" placeholder="0.00">
         </label>
         <!-- Skips this week only; Monday clears it by itself -->
@@ -681,8 +693,9 @@
 
       <!-- Correcting one line of a history list -->
       <div class="field-group" id="fields-entry" hidden>
-        <label class="field">
+        <label class="field money">
           <span>Amount</span>
+          <span class="currency">$</span>
           <input type="text" inputmode="text" id="entry-amount" placeholder="0.00">
         </label>
         <label class="field">
@@ -694,8 +707,9 @@
 
       <!-- What a paycheck is worth -->
       <div class="field-group" id="fields-paycheck" hidden>
-        <label class="field">
+        <label class="field money">
           <span>Paycheck</span>
+          <span class="currency">$</span>
           <input type="text" inputmode="decimal" id="paycheck-input" placeholder="0.00">
         </label>
       </div>
@@ -703,8 +717,9 @@
 
       <!-- Minimum reserve used by the Plan screen -->
       <div class="field-group" id="fields-reserve" hidden>
-        <label class="field">
+        <label class="field money">
           <span>Minimum reserve</span>
+          <span class="currency">$</span>
           <input type="text" inputmode="decimal" id="reserve-input" placeholder="0.00">
         </label>
       </div>
