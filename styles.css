@@ -495,7 +495,6 @@ button.row:active { background: var(--card-press); }
    card's rounded corners, so the focus debt is tinted instead. */
 .row.focus { background: var(--tint-soft); }
 
-.payoff-box { margin-bottom: 4px; }
 .payoff-date {
   margin-top: 2px;
   font-size: 13px;
@@ -913,11 +912,35 @@ button.row:active { background: var(--card-press); }
   text-align: center;
 }
 
-/* A skipped week: dimmed, with the amount replaced by a dash. The circle
-   is deliberately left unfilled — filled means money moved. */
+/* A skipped week: dimmed, with the amount replaced by a dash. */
 .row.skipped .row-title,
 .row.skipped .row-sub,
 .row.skipped .row-amount { opacity: 0.55; }
+
+/* The circle fills in as well, so the week reads as cleared rather than
+   still waiting on you — but grey with a dash, never the green tick.
+   Green is reserved for money that actually moved, and skipping moves
+   none. The dash is the same mark the amount column shows. */
+.row.skipped .check {
+  background: var(--switch-off);
+  border-color: var(--switch-off);
+}
+.row.skipped .check::after {
+  content: '–';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* Nothing left to tick off: it stops responding, and only comes back
+   through "Un-skip this week" in the sheet. */
+.check:disabled { cursor: default; }
+.check:disabled:active { transform: none; }
 
 /* Secondary action inside a sheet: present, but never competing with Save. */
 .skip-btn {
@@ -1079,7 +1102,12 @@ button.row:active { background: var(--card-press); }
 /* ===========================================================
    DETAIL SCREENS
    =========================================================== */
+/* The bottom margin keeps two of these from butting together, which is
+   what "Current balance" and "Paid off in" did on a debt — their rounded
+   corners met and pinched. It collapses against the 12px above a
+   .big-btn, so nothing else on these screens moves. */
 .balance-box {
+  margin-bottom: 10px;
   padding: 22px 17px 24px;
   border-radius: var(--r-card);
   background: var(--card);

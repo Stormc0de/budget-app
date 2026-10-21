@@ -1149,10 +1149,11 @@ function payoffEstimate(card, monthlyExtra) {
    funded into an envelope, it comes straight out of the free cushion —
    which is exactly what spending unclaimed money should do. */
 function toggleAvalanche() {
-  /* A skipped week comes back to normal first. Paying after a change of
-     heart is then a second tap, so no single tap can turn "I skipped
-     this week" straight into money leaving the account. */
-  if (avalancheSkippedThisWeek()) return unskipAvalancheWeek();
+  /* A skipped week is settled: the circle is disabled and does nothing,
+     so no tap here can turn "not this week" back into money leaving the
+     account. Changing your mind means opening the sheet and un-skipping,
+     which is deliberate rather than one stray thumb. */
+  if (avalancheSkippedThisWeek()) return;
 
   if (avalancheDoneThisWeek()) {
     const record = settings.lastAvalanchePayment;
@@ -1476,15 +1477,23 @@ function renderWeek() {
   if (target) {
     const skipped = avalancheSkippedThisWeek();
 
-    /* A filled circle means money moved. A skipped week must never look
-       like one, so it stays unfilled and the row dims instead. */
-    document.querySelector('[data-ritual="avalanche"]').classList.toggle('on', done);
+    /* A GREEN circle means money moved, so a skipped week never gets one.
+       It fills grey with a dash instead, which reads as cleared without
+       claiming a payment, and it is disabled — there is nothing to tick
+       off in a week you have already set aside. Un-skipping is done in
+       the sheet, so no stray tap here can bring the payment back. */
+    const avalancheCheck = document.querySelector('[data-ritual="avalanche"]');
+    avalancheCheck.classList.toggle('on', done);
+    avalancheCheck.disabled = skipped;
+    avalancheCheck.setAttribute('aria-label', skipped
+      ? 'Skipped this week — un-skip it from the row beside this'
+      : 'Mark the extra payment as made');
     $('row-avalanche').classList.toggle('skipped', skipped);
 
     $('avalanche-title').textContent = 'Extra to ' + target.name;
     $('avalanche-amount').textContent = skipped ? '—' : fmt(settings.avalancheExtra);
     $('avalanche-sub').textContent = skipped
-      ? 'Skipped this week · tap to undo'
+      ? 'Skipped this week · tap here to un-skip'
       : (settings.avalancheExtra <= 0
           ? 'Off — tap to set a weekly extra'
           : (done
