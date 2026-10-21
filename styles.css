@@ -195,28 +195,12 @@ button, input, select {
    never show through the title. The scrolled state only deepens it and
    adds the hairline — the effect is an enhancement, not something
    legibility depends on. */
-/* A bar of fixed height. It must never change size: it is in the flow
-   above the content, so anything that grows or shrinks it drags every
-   row below it up or down while you are reading them.
-
-   It is also invisible until it has something to do. At rest there is
-   nothing underneath it — the large title sits below, in the content —
-   so a tinted strip there is just a band across the top of the screen
-   cutting the heading off. The glass arrives with the first scroll,
-   when there are rows passing under it and a small title to carry. The
-   blur stays on throughout: at rest it has only the background's own
-   gradient to work on, so it shows nothing, and leaving it in place is
-   what lets the tint fade in rather than snap. */
 .nav {
   position: sticky;
   top: 0;
   z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: calc(env(safe-area-inset-top) + 44px);
-  padding: env(safe-area-inset-top) 56px 0;
-  background: transparent;
+  padding: calc(env(safe-area-inset-top) + 14px) 20px 10px;
+  background: var(--glass);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
   transition: background 0.25s ease, box-shadow 0.25s ease;
@@ -227,26 +211,13 @@ body.scrolled .nav {
   box-shadow: 0 0.5px 0 var(--glass-hairline);
 }
 
-/* The small title, waiting in the bar for the big one to go under it */
-.nav-compact {
-  font-size: 17px;
-  font-weight: 650;
-  letter-spacing: -0.2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  opacity: 0;
-  transform: translateY(7px);
-  transition: opacity 0.22s ease,
-              transform 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+.nav-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-body.compact .nav-compact { opacity: 1; transform: translateY(0); }
 
-/* The large title belongs to the content, not the bar, so it scrolls
-   away at exactly the speed of your finger. */
-.title-block { padding: 2px 20px 8px; }
-
-.title-block h1 {
+.nav h1 {
   margin: 0;
   font-size: 34px;
   font-weight: 700;
@@ -582,7 +553,7 @@ button.row:active { background: var(--card-press); }
 .nav-btn {
   position: absolute;
   left: 14px;
-  top: calc(env(safe-area-inset-top) + 2px);
+  top: calc(env(safe-area-inset-top) + 14px);
   width: 40px;
   height: 40px;
   display: grid;
