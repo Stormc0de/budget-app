@@ -60,6 +60,10 @@ const DEFAULT_SETTINGS = {
   avalancheExtra: 0,
   lastAvalancheWeek: null,
   lastAvalanchePayment: null,   // { cardId, amount } so undo is exact
+  /* A week you decided not to send the extra at all. Week-stamped like
+     every other weekly tick, so Monday clears it by itself and the next
+     week is back to normal without you having to remember anything. */
+  avalancheSkippedWeek: null,
 
   // Week sections you have folded shut on the Week screen. Anything
   // past next week starts folded, to keep the glance view short.
@@ -847,7 +851,9 @@ function projectPaychecks(count = PROJECTION_WEEKS) {
     const current = i === 0;
 
     const transfer = (current && transferredThisWeek()) ? 0 : settings.weeklyTransfer;
-    const extra = (current && avalancheDoneThisWeek())
+    /* Already paid, or deliberately skipped — either way this week sends
+       nothing, and the nine weeks after it stay on the standing amount. */
+    const extra = (current && (avalancheDoneThisWeek() || avalancheSkippedThisWeek()))
       ? 0
       : (avalancheTarget() ? settings.avalancheExtra : 0);
 
@@ -1056,6 +1062,25 @@ function avalancheTarget() {
 
 const avalancheDoneThisWeek = () => settings.lastAvalancheWeek === currentWeek();
 
+/* Skipping is a decision about this week only, never a change to the
+   standing amount — so it cannot quietly disable your extra payment the
+   way setting the amount to zero and forgetting would. */
+const avalancheSkippedThisWeek = () => settings.avalancheSkippedWeek === currentWeek();
+
+function skipAvalancheWeek() {
+  // nothing to skip once the money has gone — untick it first
+  if (avalancheDoneThisWeek()) return;
+  settings.avalancheSkippedWeek = currentWeek();
+  save(SETTINGS_KEY, settings);
+  renderAll();
+}
+
+function unskipAvalancheWeek() {
+  settings.avalancheSkippedWeek = null;
+  save(SETTINGS_KEY, settings);
+  renderAll();
+}
+
 // Is the current focus one you picked, rather than the avalanche pick?
 function focusIsManual() {
   const target = avalancheTarget();
@@ -1119,6 +1144,11 @@ function payoffEstimate(card, monthlyExtra) {
    funded into an envelope, it comes straight out of the free cushion —
    which is exactly what spending unclaimed money should do. */
 function toggleAvalanche() {
+  /* A skipped week comes back to normal first. Paying after a change of
+     heart is then a second tap, so no single tap can turn "I skipped
+     this week" straight into money leaving the account. */
+  if (avalancheSkippedThisWeek()) return unskipAvalancheWeek();
+
   if (avalancheDoneThisWeek()) {
     const record = settings.lastAvalanchePayment;
     if (record) {
@@ -1168,6 +1198,7 @@ function toggleAvalanche() {
 
   settings.lastAvalancheWeek = currentWeek();
   settings.lastAvalanchePayment = { cardId: target.id, amount };
+  settings.avalancheSkippedWeek = null;     // paid and skipped cannot both hold
   save(SETTINGS_KEY, settings);
   renderAll();
 }
@@ -1438,14 +1469,22 @@ function renderWeek() {
   $('row-avalanche').hidden = !target;
 
   if (target) {
+    const skipped = avalancheSkippedThisWeek();
+
+    /* A filled circle means money moved. A skipped week must never look
+       like one, so it stays unfilled and the row dims instead. */
     document.querySelector('[data-ritual="avalanche"]').classList.toggle('on', done);
+    $('row-avalanche').classList.toggle('skipped', skipped);
+
     $('avalanche-title').textContent = 'Extra to ' + target.name;
-    $('avalanche-amount').textContent = fmt(settings.avalancheExtra);
-    $('avalanche-sub').textContent = settings.avalancheExtra <= 0
-      ? 'Tap to set your weekly extra'
-      : (done
-          ? 'Paid this week · balance now ' + fmt(target.balance)
-          : `Highest rate at ${target.apr.toFixed(2)}% · tap the circle when paid`);
+    $('avalanche-amount').textContent = skipped ? '—' : fmt(settings.avalancheExtra);
+    $('avalanche-sub').textContent = skipped
+      ? 'Skipped this week · tap to undo'
+      : (settings.avalancheExtra <= 0
+          ? 'Off — tap to set a weekly extra'
+          : (done
+              ? 'Paid this week · balance now ' + fmt(target.balance)
+              : `Highest rate at ${target.apr.toFixed(2)}% · tap the circle when paid`));
   }
 
   // fund & pay list, split into weeks by due date
@@ -2143,10 +2182,24 @@ function openSheet(type, id, forMonth) {
   } else if (type === 'avalanche') {
     $('avalanche-input').value = settings.avalancheExtra || '';
     const target = avalancheTarget();
+    const skipped = avalancheSkippedThisWeek();
+    const done = avalancheDoneThisWeek();
+
+    /* Skipping is about this week; the amount above is the standing one.
+       Once the payment has gone there is nothing to skip, so the button
+       says what to do about that instead of failing silently. */
+    const skipBtn = $('avalanche-skip');
+    skipBtn.hidden = !target;
+    skipBtn.disabled = done;
+    skipBtn.textContent = done
+      ? 'Already paid this week'
+      : (skipped ? 'Un-skip this week' : 'Skip this week');
+
     $('avalanche-hint').textContent = target
       ? `Goes to ${target.name}, your highest rate at ${target.apr.toFixed(2)}%. ` +
         'The target moves on by itself once that debt is cleared. Ticking it off ' +
-        'lowers that debt and takes the same amount out of the Bills account.'
+        'lowers that debt and takes the same amount out of the Bills account. ' +
+        'Zero turns the extra off; skipping leaves it alone and clears on Monday.'
       : 'Add a debt with a balance first.';
   }
 
@@ -2465,7 +2518,10 @@ function saveReserve() {
 
 function saveAvalancheAmount() {
   const amount = toNumber($('avalanche-input').value);
-  if (amount <= 0) return showError('Please enter an amount greater than zero.');
+  /* Zero is allowed, and means you are not making extra payments for now.
+     Refusing it left no way back once an amount had been set, short of
+     clearing every debt balance. To miss a single week, skip it instead. */
+  if (amount < 0) return showError('Please enter zero or more.');
 
   settings.avalancheExtra = round2(amount);
   save(SETTINGS_KEY, settings);
@@ -2775,6 +2831,7 @@ function cleanSettings(obj) {
     lastTransferAmount: toNumber(obj.lastTransferAmount),
     avalancheExtra: toNumber(obj.avalancheExtra),
     lastAvalancheWeek: weekStamp(obj.lastAvalancheWeek),
+    avalancheSkippedWeek: weekStamp(obj.avalancheSkippedWeek),
     lastAvalanchePayment: (obj.lastAvalanchePayment &&
                            typeof obj.lastAvalanchePayment === 'object')
       ? { cardId: String(obj.lastAvalanchePayment.cardId || ''),
@@ -2853,6 +2910,11 @@ $('account-open').addEventListener('click', () => { renderAccount(); showScreen(
 $('account-adjust-btn').addEventListener('click', () => openSheet('account', null));
 $('edit-transfer').addEventListener('click', () => openSheet('transfer', null));
 $('edit-avalanche').addEventListener('click', () => openSheet('avalanche', null));
+$('avalanche-skip').addEventListener('click', () => {
+  if (avalancheDoneThisWeek()) return;
+  if (avalancheSkippedThisWeek()) unskipAvalancheWeek(); else skipAvalancheWeek();
+  closeSheet();
+});
 $('edit-reserve').addEventListener('click', () => openSheet('reserve', null));
 $('edit-paycheck').addEventListener('click', () => openSheet('paycheck', null));
 

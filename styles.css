@@ -868,6 +868,33 @@ body.scrolled .nav {
   text-align: center;
 }
 
+/* A skipped week: dimmed, with the amount replaced by a dash. The circle
+   is deliberately left unfilled — filled means money moved. */
+.row.skipped .row-title,
+.row.skipped .row-sub,
+.row.skipped .row-amount { opacity: 0.55; }
+
+/* Secondary action inside a sheet: present, but never competing with Save. */
+.skip-btn {
+  width: 100%;
+  margin-top: 4px;
+  padding: 11px 14px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--fill-subtle);
+  color: var(--tint);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.18s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.2s ease;
+}
+.skip-btn:active { transform: scale(0.97); }
+.skip-btn:disabled {
+  color: var(--text-2);
+  opacity: 0.6;
+  cursor: default;
+}
+
 .chip.on-fund {
   background: var(--tint);
   color: #fff;

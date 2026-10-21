@@ -88,6 +88,10 @@ anything that touches money.
 - **Envelope targets** keep a standing balance ready — Haircut sits at $80, and
   once it is full that month's money stays in my cushion instead.
 - The avalanche extra leaves the Bills account, and the Plan projection counts it.
+- **A skipped avalanche week is week-stamped and self-clearing**, like the other
+  weekly ticks — it means "not this week", never a change to the standing amount.
+  Setting the amount to zero is the separate, lasting "off". Skipping moves no
+  money, and paying clears any skip, so the two states can never both hold.
 - The Plan is anchored on the real account balance I enter. Never infer it from
   past activity; my real balance always wins.
 
