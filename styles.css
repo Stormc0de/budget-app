@@ -261,23 +261,11 @@ body.compact .nav-compact { opacity: 1; transform: translateY(0); }
   text-align: center;
 }
 
-/* Taken out of the flow so the title stays optically centred, and given
-   the bar's full height so it is comfortably past 44px to the touch. */
-.back-btn {
-  position: absolute;
-  left: 14px;
-  top: env(safe-area-inset-top);
-  display: flex;
-  align-items: center;
-  height: 44px;
-  padding: 0 6px 0 0;
-  border: 0;
-  background: none;
-  color: var(--tint);
-  font-size: 17px;
-  cursor: pointer;
-}
-.back-btn:active { opacity: 0.5; }
+/* Back is the same bubble as the calendar button opposite it: a round
+   glyph rather than "< Bills" spelled out, which is where iOS 26 landed.
+   It loses the name of the place you are going back to, so that name
+   moved into the button's label for VoiceOver. Both sit in .nav-btn
+   below, so the two can never drift apart. */
 
 /* Bottom padding clears the floating tab bar, the + button and the
    home indicator, so the last row is never trapped underneath. */
