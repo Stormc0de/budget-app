@@ -553,7 +553,7 @@ function fundBill(id, forMonth) {
   if (isFundedFor(bill, month)) return;      // that cycle is already done
 
   if (bill.amount <= 0) {
-    alert('Give this bill a planned amount first, then you can fund it.');
+    showToast('Set a planned amount for this bill first');
     return;
   }
 
@@ -1180,7 +1180,7 @@ function toggleAvalanche() {
 
   const target = avalancheTarget();
   if (!target) {
-    alert('Add a debt with a balance on the Debts tab first.');
+    showToast('Add a debt with a balance on the Debts tab first');
     return;
   }
 
@@ -2556,24 +2556,26 @@ function saveAvalancheAmount() {
   renderWeek();
 }
 
-function deleteCurrent() {
+/* The button beneath says which it is, so the message carries only what
+   happens as a result. */
+async function deleteCurrent() {
   if (editing.type === 'entry') return deleteEntry();
 
   const isCard = editing.type === 'card';
   const bill = isCard ? null : bills.find(b => b.id === editing.id);
 
   let message = isCard
-    ? 'Delete this debt? Its adjustment history is deleted too.'
-    : 'Delete this bill? Its envelope history is deleted too.';
+    ? 'Its adjustment history is deleted too.'
+    : 'Its envelope history is deleted too.';
 
   // Deleting a bill that still holds money quietly frees that money up,
   // so say so rather than letting the cushion jump unexplained.
   if (bill && bill.balance > 0) {
-    message += `\n\n${fmt(bill.balance)} is banked in it. That money stays in ` +
+    message += ` ${fmt(bill.balance)} is banked in it — that money stays in ` +
                'the account and moves back into your free cushion.';
   }
 
-  if (!confirm(message)) return;
+  if (!await askConfirm(message, isCard ? 'Delete Debt' : 'Delete Bill')) return;
 
   if (isCard) {
     cards = cards.filter(c => c.id !== editing.id);
@@ -2650,15 +2652,16 @@ function saveEntryEdit() {
   renderAll();
 }
 
-function deleteEntry() {
+async function deleteEntry() {
   const found = findEntry(editing.id);
   if (!found) return closeSheet();
 
   const what = found.kind === 'account' ? 'the account balance'
              : found.kind === 'bill'    ? 'this envelope'
              : 'this debt';
-  if (!confirm(`Delete this entry? ${fmt(Math.abs(found.entry.delta))} will be ` +
-               `taken back out of ${what}.`)) return;
+  if (!await askConfirm(
+        `${fmt(Math.abs(found.entry.delta))} will be taken back out of ${what}.`,
+        'Delete Entry')) return;
 
   const index = found.owner.history.indexOf(found.entry);
   found.owner.history.splice(index, 1);
@@ -2878,7 +2881,7 @@ async function importBackup(file) {
   try {
     data = JSON.parse(await file.text());
   } catch (err) {
-    alert("That file isn't a Budget backup — it couldn't be read.");
+    showToast("That file isn't a Budget backup — it couldn't be read");
     return;
   }
 
@@ -2886,16 +2889,17 @@ async function importBackup(file) {
   const newBills = cleanBills(data && data.bills);
 
   if (!newCards && !newBills) {
-    alert("That file isn't a Budget backup — no bills or debts were found in it.");
+    showToast("That file isn't a Budget backup — no bills or debts in it");
     return;
   }
 
   const newAccount = cleanAccount(data && data.account);
 
-  const ok = confirm(
-    `Restore ${(newBills || []).length} bills, ${(newCards || []).length} debts ` +
-    `and an account balance of ${fmt(newAccount.balance)}?\n\n` +
-    'This replaces everything currently in the app.'
+  const ok = await askConfirm(
+    `This backup holds ${(newBills || []).length} bills, ` +
+    `${(newCards || []).length} debts and an account balance of ` +
+    `${fmt(newAccount.balance)}. It replaces everything currently in the app.`,
+    'Replace Everything'
   );
   if (!ok) return;
 
@@ -2914,10 +2918,73 @@ async function importBackup(file) {
   save(INCOME_KEY, income);
 
   renderAll();
-  alert('Restored.');
+  showToast(`Restored ${bills.length} bills and ${cards.length} debts`);
+}
+
+/* ---------- 13b. Telling you things ----------------------
+   Two small pieces that stand in for the browser's own alert() and
+   confirm() boxes, which announce the address bar and look like a web
+   page rather than an app. */
+
+/* A pill above the tab bar that says its piece and fades. One at a
+   time: a new message takes over from whatever is showing. */
+let toastTimer = null;
+
+function showToast(message) {
+  const el = $('toast');
+  el.textContent = message;
+  el.hidden = false;
+
+  /* Restart the slide even when a toast is already up. Reading
+     offsetWidth forces the browser to apply the removed class before
+     the next line puts it back, which it would otherwise collapse into
+     no change at all. */
+  el.classList.remove('in');
+  void el.offsetWidth;
+  el.classList.add('in');
+  document.body.classList.add('toasting');
+
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, 2600);
+}
+
+function hideToast() {
+  const el = $('toast');
+  el.classList.remove('in');
+  document.body.classList.remove('toasting');
+  // leave it in place until the fade has finished
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 260);
+}
+
+/* An action sheet in place of confirm(). confirm() stops everything and
+   waits for an answer; this cannot, so it hands back a promise that
+   settles when you tap. Cancel is always the safe answer, and tapping
+   the dimmed background counts as cancelling. */
+let confirmResolve = null;
+
+function askConfirm(message, confirmLabel) {
+  $('action-message').textContent = message;
+  $('action-confirm').textContent = confirmLabel;
+  $('action-backdrop').hidden = false;
+  $('action-sheet').hidden = false;
+  return new Promise(resolve => { confirmResolve = resolve; });
+}
+
+function closeConfirm(answer) {
+  if (!confirmResolve) return;
+  const resolve = confirmResolve;
+  confirmResolve = null;              // cleared first, so a double tap
+  $('action-sheet').hidden = true;    // cannot answer the same question
+  $('action-backdrop').hidden = true; // twice
+  resolve(answer);
 }
 
 /* ---------- 14. Wiring up the buttons --------------------- */
+
+$('action-confirm').addEventListener('click', () => closeConfirm(true));
+$('action-cancel').addEventListener('click', () => closeConfirm(false));
+$('action-backdrop').addEventListener('click', () => closeConfirm(false));
 
 $('add-card').addEventListener('click', () => openSheet('card', null));
 $('add-bill').addEventListener('click', () => openSheet('bill', null));
@@ -3024,7 +3091,7 @@ document.addEventListener('click', e => {
     if (isPaidFor(b, month)) return unpayBill(b.id, month);
     // variable bills ask for the real figure; fixed ones just pay the plan
     if (b.variable) return openSheet('pay', b.id, month);
-    if (b.amount <= 0) return alert('Give this bill a planned amount first.');
+    if (b.amount <= 0) return showToast('Set a planned amount for this bill first');
     return payBill(b.id, b.amount, `Paid ${fmt(b.amount)}`, month);
   }
 

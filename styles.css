@@ -1404,3 +1404,103 @@ button.row:active { background: var(--card-press); }
 }
 .delete-btn:active { background: var(--card-press); transform: scale(0.98); }
 .delete-btn[hidden] { display: none; }
+
+/* ===========================================================
+   ACTION SHEET — in place of the browser's confirm() box.
+   The question, then the one answer that cannot be undone, then
+   Cancel held apart in a card of its own.
+   =========================================================== */
+.action-backdrop { z-index: 40; }
+
+.action-sheet {
+  position: fixed;
+  left: 10px;
+  right: 10px;
+  bottom: calc(env(safe-area-inset-bottom) + 10px);
+  z-index: 41;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: action-up 0.38s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.action-sheet[hidden] { display: none; }
+
+@keyframes action-up {
+  from { transform: translateY(calc(100% + 24px)); opacity: 0.3; }
+}
+
+.action-group,
+.action-btn.cancel {
+  border-radius: 14px;
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 0.5px 0 var(--glass-edge), var(--shadow-float);
+}
+.action-group { overflow: hidden; }
+
+.action-message {
+  margin: 0;
+  padding: 17px 20px;
+  border-bottom: 0.5px solid var(--separator);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-2);
+  text-align: center;
+}
+
+.action-btn {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: none;
+  padding: 17px 18px;
+  font-size: 19px;
+  color: var(--tint);
+  transition: background 0.15s ease;
+  cursor: pointer;
+}
+.action-btn:active { background: var(--fill-subtle); }
+.action-btn.destructive { color: var(--red); }
+.action-btn.cancel { font-weight: 650; }
+
+/* ===========================================================
+   TOAST — in place of the browser's alert() box. A pill above the
+   tab bar that says its piece and fades. Never takes a tap, so it
+   cannot swallow one meant for the screen underneath.
+   =========================================================== */
+.toast {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: calc(var(--bar-bottom) + 75px);   /* clears the 63px tab bar */
+  z-index: 45;
+  margin: 0 auto;
+  width: fit-content;
+  max-width: calc(100% - 44px);
+  padding: 12px 18px;
+  border-radius: var(--r-pill);
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow:
+    inset 0 0.5px 0 var(--glass-edge),
+    0 0 0 0.5px var(--glass-hairline),
+    var(--shadow-float);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: center;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.22s ease,
+              transform 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+  pointer-events: none;
+}
+.toast[hidden] { display: none; }
+.toast.in { opacity: 1; transform: translateY(0); }
+
+/* No toast is raised from a screen with the + button today, but if one
+   ever is, the button steps aside rather than sitting on top of it. */
+body.toasting .fab { opacity: 0; pointer-events: none; }
