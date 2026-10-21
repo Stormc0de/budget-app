@@ -269,6 +269,11 @@ function sortByDue(list) {
   });
 }
 
+/* A run of rows is drawn as one grouped card, with hairlines between the
+   rows rather than a gap. An empty run wraps to nothing, or the card
+   would show up as an empty sliver. */
+const groupOf = rowsHtml => rowsHtml ? `<div class="group">${rowsHtml}</div>` : '';
+
 /* Builds a list split into its categories, given a function that draws
    one row. The headings only appear when there is more than one group
    to tell apart, so a single-category list stays uncluttered. */
@@ -280,7 +285,7 @@ function groupedHtml(rowHtml, sorter = sortByDue) {
   const headings = groups.length > 1;
   return groups.map(group =>
     (headings ? `<h3 class="group-title">${group.cat.label}</h3>` : '') +
-    group.items.map(rowHtml).join('')
+    groupOf(group.items.map(rowHtml).join(''))
   ).join('');
 }
 
@@ -408,7 +413,7 @@ function weekGroupedHtml(rowHtml) {
         <span class="week-count">${sorted.length}</span>
         <span class="week-sum">${summary}</span>
       </button>` +
-      (collapsed ? '' : sorted.map(b => rowHtml(b, key)).join(''));
+      (collapsed ? '' : groupOf(sorted.map(b => rowHtml(b, key)).join('')));
   }).join('');
 }
 
@@ -1498,26 +1503,39 @@ function renderWeek() {
     // nothing to pay in a month a quarterly or annual bill is not due
     const payable = b.day === 'any' ||
                     isDueMonth(b, new Date(month + '-01T12:00:00'));
+    /* Banked money goes under the amount in green, the same as the Bills
+       tab, rather than into the grey line — in the subtitle it pushed
+       that line onto two and three wrapped rows. */
     const banked = b.balance > 0
-      ? ` · ${fmt(b.balance)}${b.target > 0 ? ' of ' + fmt(b.target) : ''} banked`
+      ? `<div class="banked">${fmt(b.balance)}${b.target > 0 ? ' of ' + fmt(b.target) : ''} banked</div>`
       : '';
+    /* Under the red "Overdue" heading the word is already on screen twice
+       over, in the heading and in the row's own colour, so the row there
+       just gives the due date. */
     const overdue = isOverdue(b);
+    const overduePrefix = overdue && key !== 'overdue' ? 'Overdue · ' : '';
 
     return `
       <div class="row bill-row ${paid ? 'paid' : ''}${justPaid === b.id ? ' celebrate' : ''}${justFunded === b.id ? ' just-funded' : ''}">
-        <div class="row-main">
+        <div class="bill-line">
           <div class="row-title">${esc(b.name)}</div>
-          <div class="row-sub ${overdue ? 'overdue' : ''}">
-            ${overdue ? 'Overdue · ' : ''}${ahead ? 'Next month · ' : ''}${dueLabel(b)} · ${fmt(b.amount)}${b.variable ? ' planned' : ''}${cadenceOf(b) > 1 ? ' · ' + fmt(monthlySlice(b)) + '/mo' : ''}${banked}
+          <div class="row-right">
+            <div class="row-amount">${fmt(b.amount)}</div>
+            ${banked}
           </div>
         </div>
-        <div class="chips">
-          <button class="chip ${funded ? 'on-fund' : ''}" data-fund="${b.id}" data-for-month="${month}">
-            ${funded ? '✓&nbsp;Funded' : 'Fund'}
-          </button>
-          ${payable ? `<button class="chip ${paid ? 'on-paid' : ''}" data-pay="${b.id}" data-for-month="${month}">
-            ${paid ? '✓&nbsp;Paid' : 'Pay'}
-          </button>` : '<span class="chip-note">saving</span>'}
+        <div class="bill-line">
+          <div class="row-sub ${overdue ? 'overdue' : ''}">
+            ${overduePrefix}${ahead ? 'Next month · ' : ''}${dueLabel(b)}${b.variable ? ' · varies' : ''}${cadenceOf(b) > 1 ? ' · ' + fmt(monthlySlice(b)) + '/mo' : ''}
+          </div>
+          <div class="chips">
+            <button class="chip ${funded ? 'on-fund' : ''}" data-fund="${b.id}" data-for-month="${month}">
+              ${funded ? '✓&nbsp;Funded' : 'Fund'}
+            </button>
+            ${payable ? `<button class="chip ${paid ? 'on-paid' : ''}" data-pay="${b.id}" data-for-month="${month}">
+              ${paid ? '✓&nbsp;Paid' : 'Pay'}
+            </button>` : '<span class="chip-note">saving</span>'}
+          </div>
         </div>
       </div>`;
   });
@@ -1584,7 +1602,7 @@ function renderBillDetail() {
     (bill.target > 0 ? ' of ' + fmt(bill.target) : '');
 
   const entries = [...(bill.history || [])].reverse();
-  $('bill-history').innerHTML = entries.map(h => `
+  $('bill-history').innerHTML = groupOf(entries.map(h => `
     <button class="row" data-entry="bill|${bill.id}|${h.id}">
       <div class="row-main">
         <div class="row-title">${esc(h.reason)}</div>
@@ -1594,7 +1612,7 @@ function renderBillDetail() {
         ${h.delta >= 0 ? '+' : '−'}${fmt(Math.abs(h.delta))}
       </div>
       <div class="chevron">›</div>
-    </button>`).join('');
+    </button>`).join(''));
 
   $('bill-history-empty').hidden = entries.length > 0;
 }
@@ -1612,7 +1630,7 @@ function renderAccount() {
     : `${fmt(cushion)} not spoken for`;
 
   const entries = [...account.history].reverse();
-  $('account-history').innerHTML = entries.map(h => `
+  $('account-history').innerHTML = groupOf(entries.map(h => `
     <button class="row" data-entry="account|account|${h.id}">
       <div class="row-main">
         <div class="row-title">${esc(h.reason)}</div>
@@ -1622,7 +1640,7 @@ function renderAccount() {
         ${h.delta >= 0 ? '+' : '−'}${fmt(Math.abs(h.delta))}
       </div>
       <div class="chevron">›</div>
-    </button>`).join('');
+    </button>`).join(''));
 
   $('account-history-empty').hidden = entries.length > 0;
 }
@@ -1804,7 +1822,7 @@ function renderLog() {
     ? entries.length + (entries.length === 1 ? ' change' : ' changes')
     : '';
 
-  $('log-list').innerHTML = entries.map(e => `
+  $('log-list').innerHTML = groupOf(entries.map(e => `
     <div class="row">
       <div class="row-main">
         <div class="row-title">${esc(e.label)}</div>
@@ -1813,7 +1831,7 @@ function renderLog() {
           ${e.reason ? `<div class="log-reason">${esc(e.reason)}</div>` : ''}
         </div>
       </div>
-    </div>`).join('');
+    </div>`).join(''));
 
   $('log-empty').hidden = entries.length > 0;
 }
@@ -1826,7 +1844,7 @@ function renderCards() {
   renderFreedom();
   const target = avalancheTarget();
 
-  $('cards-list').innerHTML = cards.map(c => `
+  $('cards-list').innerHTML = groupOf(cards.map(c => `
     <button class="row ${target && target.id === c.id ? 'focus' : ''}" data-open-card="${c.id}">
       <div class="row-main">
         <div class="row-title">
@@ -1837,7 +1855,7 @@ function renderCards() {
       </div>
       <div class="row-amount">${fmt(c.balance)}</div>
       <div class="chevron">›</div>
-    </button>`).join('');
+    </button>`).join(''));
 
   $('cards-empty').hidden = cards.length > 0;
 
@@ -1868,7 +1886,7 @@ function renderCardDetail() {
   renderPayoff(c);
 
   const entries = [...(c.history || [])].reverse();
-  $('history-list').innerHTML = entries.map(h => `
+  $('history-list').innerHTML = groupOf(entries.map(h => `
     <button class="row" data-entry="card|${c.id}|${h.id}">
       <div class="row-main">
         <div class="row-title">${esc(h.reason)}</div>
@@ -1878,7 +1896,7 @@ function renderCardDetail() {
         ${h.delta >= 0 ? '+' : '−'}${fmt(Math.abs(h.delta))}
       </div>
       <div class="chevron">›</div>
-    </button>`).join('');
+    </button>`).join(''));
 
   $('history-empty').hidden = entries.length > 0;
 }

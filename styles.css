@@ -41,6 +41,7 @@
   --segment-on:  #FFFFFF;
   --switch-off:  rgba(120, 120, 128, 0.22);
   --fill-subtle: rgba(120, 120, 128, 0.10);
+  --tint-soft:   rgba(0, 122, 255, 0.09);
 
   /* status colours */
   --pay-flash: #D6F5E0;   /* the green a row flashes as it is paid */
@@ -91,6 +92,7 @@
     --segment-on:  #5A5A5E;
     --switch-off:  rgba(120, 120, 128, 0.32);
     --fill-subtle: rgba(120, 120, 128, 0.18);
+    --tint-soft:   rgba(10, 132, 255, 0.20);
 
     --pay-flash: #17401F;
     --good-bg: #10331B;  --good-fg: #4ADE80;
@@ -257,32 +259,58 @@ body.scrolled .nav {
 /* ===========================================================
    LISTS + ROWS  (content layer: solid, not glass)
    =========================================================== */
+/* Spacing is set by the headings and groups themselves rather than a
+   list-wide gap, so a heading can sit close to the rows it belongs to
+   while still standing clear of the group above it. */
 .list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 0;
 }
-.list.history { gap: 8px; }
+
+/* A run of rows is ONE card with hairlines between them, the way iOS
+   draws a grouped list — not a stack of separate floating pills. One
+   shadow for the whole group instead of one per row. */
+.group {
+  border-radius: var(--r-card);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;              /* clips the first and last row's corners */
+}
+.group + .group { margin-top: 10px; }
 
 .row {
+  position: relative;            /* for the hairline drawn below */
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 15px 17px;
+  padding: 13px 17px;
   border: 0;
-  border-radius: var(--r-card);
-  background: var(--card);
-  box-shadow: var(--shadow-card);
+  background: none;
   text-align: left;
   color: inherit;
-  transition: transform 0.18s cubic-bezier(0.32, 0.72, 0, 1), background 0.18s ease;
+  transition: background 0.18s ease;
   cursor: pointer;
 }
-.row:active {
-  background: var(--card-press);
-  transform: scale(0.985);
+
+/* The hairline is inset to the text, which is how iOS separates rows.
+   Drawn as a pseudo-element rather than a border so it never adds to
+   the row's height and so the first row never gets one. */
+.row + .row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 17px;
+  right: 0;
+  height: 0.5px;
+  background: var(--separator);
 }
+
+/* Only rows that are themselves a button light up on press. The ritual,
+   week and log rows are containers holding their own buttons, so
+   highlighting the whole row would promise something that isn't there. */
+button.row:active { background: var(--card-press); }
 
 .row-main { flex: 1; min-width: 0; }
 
@@ -294,6 +322,7 @@ body.scrolled .nav {
   color: inherit;
   cursor: pointer;
 }
+.row-main-btn:active { opacity: 0.5; }
 
 .row-title {
   font-size: 17px;
@@ -313,13 +342,15 @@ body.scrolled .nav {
 .row-sub.overdue { color: var(--red); font-weight: 500; }
 
 .row-amount {
+  flex: 0 0 auto;
   font-size: 17px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.2px;
+  white-space: nowrap;
 }
 
-.row-right { text-align: right; }
+.row-right { flex: 0 0 auto; text-align: right; }
 
 .banked {
   margin-top: 2px;
@@ -376,8 +407,8 @@ body.scrolled .nav {
   align-items: center;
   gap: 8px;
   width: 100%;
-  margin: 10px 2px 0;
-  padding: 4px 4px 6px;
+  margin: 16px 2px 0;
+  padding: 4px 4px 7px;
   border: 0;
   background: none;
   color: var(--text-2);
@@ -460,9 +491,9 @@ body.scrolled .nav {
   vertical-align: 1px;
   white-space: nowrap;
 }
-.row.focus {
-  box-shadow: var(--shadow-card), inset 0 0 0 2px var(--tint);
-}
+/* Inside a grouped card a hard ring would draw a rectangle against the
+   card's rounded corners, so the focus debt is tinted instead. */
+.row.focus { background: var(--tint-soft); }
 
 .payoff-box { margin-bottom: 4px; }
 .payoff-date {
@@ -473,7 +504,7 @@ body.scrolled .nav {
 
 /* Category heading inside a list */
 .group-title {
-  margin: 8px 6px 0;
+  margin: 18px 6px 7px;
   font-size: 13px;
   font-weight: 600;
   letter-spacing: -0.1px;
@@ -658,17 +689,12 @@ body.scrolled .nav {
 }
 .cal-bill:last-child { border-bottom: 0; }
 
+/* Chips sit side by side everywhere now, so the calendar only needs
+   them pushed to the right under the bill's own line. */
 .chips.cal-chips {
-  flex-direction: row;
   justify-content: flex-end;
-  gap: 8px;
   margin-top: 7px;
 }
-.chips.cal-chips .chip { min-width: 74px; }
-
-/* the chips sit side by side, so the invisible hit area has to grow
-   sideways instead of vertically to keep both targets at 44px */
-.chips.cal-chips .chip::after { top: -4px; bottom: -4px; left: -4px; right: -4px; }
 
 .cal-ahead {
   margin-left: 5px;
@@ -755,28 +781,47 @@ body.scrolled .nav {
 }
 .stat-value.negative { color: var(--red); }
 
-/* Fund / Pay chips */
-.bill-row { align-items: center; }
+/* One bill on the Week screen, in two lines: the name against its
+   amount, then the due date against the Fund and Pay chips. The amount
+   used to sit inside the grey subtitle, which buried the one figure you
+   most want to read, and the chips used to stack, which made every row
+   two chips tall. */
+.bill-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.bill-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+/* The name sits on the amount's baseline, so a bill carrying a second
+   "banked" line underneath doesn't drag its name down the row. */
+.bill-line:first-child { align-items: baseline; }
+.bill-line .row-title { flex: 1; min-width: 0; }
+.bill-line .row-sub   { flex: 1; min-width: 0; margin-top: 0; }
 
 .chips {
   display: flex;
-  flex-direction: column;
   gap: 8px;
   flex: 0 0 auto;
 }
 
-/* 36px tall, with 4px of invisible hit area above and below taking each
-   chip to Apple's 44px minimum. The 8px gap is exactly twice that, so
-   the two targets meet without overlapping — a tap can never land on
-   the wrong chip. */
+/* 34px tall, with 5px of invisible hit area above and below taking each
+   chip to Apple's 44px minimum. Side by side the 8px gap splits 4px
+   either way, so the two targets meet without overlapping — a tap can
+   never land on the wrong chip. */
 .chip {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 82px;
-  min-height: 36px;      /* pinned, not left to line-height rounding */
-  padding: 8px 12px;
+  min-width: 76px;
+  min-height: 34px;      /* pinned, not left to line-height rounding */
+  padding: 7px 12px;
   border: 0;
   border-radius: var(--r-pill);
   background: var(--fill-subtle);
@@ -791,8 +836,8 @@ body.scrolled .nav {
 .chip::after {
   content: '';
   position: absolute;
-  left: 0; right: 0;
-  top: -4px; bottom: -4px;
+  left: -4px; right: -4px;
+  top: -5px; bottom: -5px;
 }
 
 /* ===========================================================
@@ -859,7 +904,7 @@ body.scrolled .nav {
 
 /* stands in for the Pay chip in a month a bill is not due */
 .chip-note {
-  min-width: 82px;
+  min-width: 76px;
   padding: 7px 12px;
   border-radius: var(--r-pill);
   color: var(--text-2);
@@ -955,12 +1000,15 @@ body.scrolled .nav {
 .spark-low { font-weight: 650; }
 .plan-summary { margin-bottom: 12px; }
 
+/* Each paycheck stays its own card rather than joining a group: a short
+   week is tinted red end to end, which only reads as a card of its own. */
 .plan-week {
   padding: 14px 16px;
   border-radius: var(--r-card);
   background: var(--card);
   box-shadow: var(--shadow-card);
 }
+.plan-week + .plan-week { margin-top: 10px; }
 
 /* a week that cannot cover itself is unmissable */
 .plan-week.short {
