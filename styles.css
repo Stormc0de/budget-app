@@ -191,11 +191,18 @@ button, input, select {
    never show through the title. The scrolled state only deepens it and
    adds the hairline — the effect is an enhancement, not something
    legibility depends on. */
+/* A bar of fixed height. It must never change size: it is in the flow
+   above the content, so anything that grows or shrinks it drags every
+   row below it up or down while you are reading them. */
 .nav {
   position: sticky;
   top: 0;
   z-index: 10;
-  padding: calc(env(safe-area-inset-top) + 14px) 20px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(env(safe-area-inset-top) + 44px);
+  padding: env(safe-area-inset-top) 56px 0;
   background: var(--glass);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
@@ -207,13 +214,26 @@ body.scrolled .nav {
   box-shadow: 0 0.5px 0 var(--glass-hairline);
 }
 
-.nav-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* The small title, waiting in the bar for the big one to go under it */
+.nav-compact {
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transform: translateY(7px);
+  transition: opacity 0.22s ease,
+              transform 0.22s cubic-bezier(0.32, 0.72, 0, 1);
 }
+body.compact .nav-compact { opacity: 1; transform: translateY(0); }
 
-.nav h1 {
+/* The large title belongs to the content, not the bar, so it scrolls
+   away at exactly the speed of your finger. */
+.title-block { padding: 2px 20px 8px; }
+
+.title-block h1 {
   margin: 0;
   font-size: 34px;
   font-weight: 700;
@@ -228,11 +248,18 @@ body.scrolled .nav {
   text-align: center;
 }
 
+/* Taken out of the flow so the title stays optically centred, and given
+   the bar's full height so it is comfortably past 44px to the touch. */
 .back-btn {
+  position: absolute;
+  left: 14px;
+  top: env(safe-area-inset-top);
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 6px 0 0;
   border: 0;
   background: none;
-  padding: 0 0 4px;
-  margin-left: -3px;
   color: var(--tint);
   font-size: 17px;
   cursor: pointer;
@@ -548,7 +575,7 @@ button.row:active { background: var(--card-press); }
 .nav-btn {
   position: absolute;
   left: 14px;
-  top: calc(env(safe-area-inset-top) + 14px);
+  top: calc(env(safe-area-inset-top) + 2px);
   width: 40px;
   height: 40px;
   display: grid;

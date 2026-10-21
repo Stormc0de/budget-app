@@ -1603,6 +1603,7 @@ function renderBillDetail() {
   if (!bill) return showScreen('bills');
 
   $('bill-title').textContent = bill.name;
+  syncCompactTitle('bill');
   const linkedCard = bill.linkedCardId && cards.find(c => c.id === bill.linkedCardId);
   $('bill-sub').textContent =
     `${dueLabel(bill)} · ${fmt(bill.amount)}${bill.variable ? ' planned' : ''}` +
@@ -1888,6 +1889,7 @@ function renderCardDetail() {
   if (!c) return showScreen('cards');
 
   $('card-title').textContent = c.name;
+  syncCompactTitle('card');
   $('card-sub').textContent = `${c.apr.toFixed(2)}% APR · Min ${fmt(c.min)}`;
   $('card-balance-big').textContent = fmt(c.balance);
 
@@ -2108,6 +2110,8 @@ function showScreen(name) {
   if (name === 'account') renderAccount();
   if (name === 'backup')  renderBackupInfo();
 
+  syncCompactTitle(name);
+
   // after the render above, so the page is at its full height again
   window.scrollTo(0, isDetail || !moving ? 0 : (scrollMemory[name] || 0));
 
@@ -2119,6 +2123,17 @@ function showScreen(name) {
 
   updateScrollEdge();
   currentScreen = name;
+}
+
+/* The bar's small title is the same words as the large one, so it is
+   copied across rather than written out twice — a bill you rename would
+   otherwise change one of them and not the other. */
+function syncCompactTitle(name) {
+  const screen = $('screen-' + name);
+  if (!screen) return;
+  const big = screen.querySelector('.title-block h1');
+  const small = screen.querySelector('.nav-compact');
+  if (big && small) small.textContent = big.textContent;
 }
 
 /* Restarting an animation means taking the class off, making the
@@ -3167,7 +3182,12 @@ document.addEventListener('visibilitychange', () => {
    slides underneath it, at which point it turns to frosted glass.
    The CSS does the look; this just says when. */
 function updateScrollEdge() {
-  document.body.classList.toggle('scrolled', window.scrollY > 4);
+  const y = window.scrollY;
+  document.body.classList.toggle('scrolled', y > 4);
+  /* And the small title appears once the large one has gone under the
+     bar. A later threshold than the glass, so the two read as one
+     movement rather than everything changing at the first pixel. */
+  document.body.classList.toggle('compact', y > 40);
 }
 window.addEventListener('scroll', updateScrollEdge, { passive: true });
 updateScrollEdge();
@@ -3198,6 +3218,11 @@ cards = cleanCards(cards) || [];
 save(BILLS_KEY, bills);
 
 renderAll();
+
+/* The Week screen is on show before anything calls showScreen, so every
+   bar gets its small title filled in once here at the start. */
+document.querySelectorAll('.screen')
+  .forEach(s => syncCompactTitle(s.id.replace('screen-', '')));
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {

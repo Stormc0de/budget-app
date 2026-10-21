@@ -31,11 +31,17 @@
         </svg>
         <i class="nav-dot" id="cal-dot" hidden></i>
       </button>
-      <div class="nav-row">
-        <h1>This Week</h1>
-      </div>
-      <p class="nav-sub" id="week-sub"></p>
+      <!-- Fades in once the big title below has gone under the bar -->
+      <span class="nav-compact"></span>
     </header>
+
+    <!-- The large title scrolls away with the content at exactly the
+         speed of your finger, rather than shrinking inside the bar
+         and dragging everything below it up by 40px. -->
+    <div class="title-block">
+      <h1>This Week</h1>
+      <p class="nav-sub" id="week-sub"></p>
+    </div>
 
     <main class="content">
       <!-- Green / amber / red "am I good?" banner -->
@@ -102,11 +108,17 @@
   <section class="screen" id="screen-calendar" hidden>
     <header class="nav">
       <button class="back-btn" id="cal-back">‹ This Week</button>
-      <div class="nav-row">
-        <h1>Calendar</h1>
-      </div>
-      <p class="nav-sub" id="cal-sub"></p>
+      <!-- Fades in once the big title below has gone under the bar -->
+      <span class="nav-compact"></span>
     </header>
+
+    <!-- The large title scrolls away with the content at exactly the
+         speed of your finger, rather than shrinking inside the bar
+         and dragging everything below it up by 40px. -->
+    <div class="title-block">
+      <h1>Calendar</h1>
+      <p class="nav-sub" id="cal-sub"></p>
+    </div>
 
     <main class="content">
       <div class="cal" id="calendar">
@@ -125,11 +137,17 @@
   <!-- ============ PLAN: NEXT 9 PAYCHECKS ============ -->
   <section class="screen" id="screen-plan" hidden>
     <header class="nav">
-      <div class="nav-row">
-        <h1>Plan</h1>
-      </div>
-      <p class="nav-sub" id="plan-sub"></p>
+      <!-- Fades in once the big title below has gone under the bar -->
+      <span class="nav-compact"></span>
     </header>
+
+    <!-- The large title scrolls away with the content at exactly the
+         speed of your finger, rather than shrinking inside the bar
+         and dragging everything below it up by 40px. -->
+    <div class="title-block">
+      <h1>Plan</h1>
+      <p class="nav-sub" id="plan-sub"></p>
+    </div>
 
     <main class="content">
       <!-- Everything is projected forward from this one real number -->
@@ -209,11 +227,17 @@
   <section class="screen" id="screen-log" hidden>
     <header class="nav">
       <button class="back-btn" id="log-back">‹ Plan</button>
-      <div class="nav-row">
-        <h1>Change Log</h1>
-      </div>
-      <p class="nav-sub" id="log-sub"></p>
+      <!-- Fades in once the big title below has gone under the bar -->
+      <span class="nav-compact"></span>
     </header>
+
+    <!-- The large title scrolls away with the content at exactly the
+         speed of your finger, rather than shrinking inside the bar
+         and dragging everything below it up by 40px. -->
+    <div class="title-block">
+      <h1>Change Log</h1>
+      <p class="nav-sub" id="log-sub"></p>
+    </div>
 
     <main class="content">
       <div class="list history" id="log-list"></div>
@@ -227,11 +251,17 @@
   <section class="screen" id="screen-account" hidden>
     <header class="nav">
       <button class="back-btn" id="account-back">‹ This Week</button>
-      <div class="nav-row">
-        <h1>Bills Account</h1>
-      </div>
-      <p class="nav-sub" id="account-sub"></p>
+      <!-- Fades in once the big title below has gone under the bar -->
+      <span class="nav-compact"></span>
     </header>
+
+    <!-- The large title scrolls away with the content at exactly the
+         speed of your finger, rather than shrinking inside the bar
+         and dragging everything below it up by 40px. -->
+    <div class="title-block">
+      <h1>Bills Account</h1>
+      <p class="nav-sub" id="account-sub"></p>
+    </div>
 
     <main class="content">
       <div class="balance-box">
@@ -264,11 +294,17 @@
   <!-- ============ BILLS SCREEN (manage them) ============ -->
   <section class="screen" id="screen-bills" hidden>
     <header class="nav">
-      <div class="nav-row">
-        <h1>Bills</h1>
-      </div>
-      <p class="nav-sub" id="bills-summary"></p>
+      <!-- Fades in once the big title below has gone under the bar -->
+      <span class="nav-compact"></span>
     </header>
+
+    <!-- The large title scrolls away with the content at exactly the
+         speed of your finger, rather than shrinking inside the bar
+         and dragging everything below it up by 40px. -->
+    <div class="title-block">
+      <h1>Bills</h1>
+      <p class="nav-sub" id="bills-summary"></p>
+    </div>
 
     <main class="content">
       <div class="list" id="bills-list"></div>
@@ -282,11 +318,17 @@
   <section class="screen" id="screen-bill" hidden>
     <header class="nav">
       <button class="back-btn" id="bill-back">‹ Bills</button>
-      <div class="nav-row">
-        <h1 id="bill-title">Bill</h1>
-      </div>
-      <p class="nav-sub" id="bill-sub"></p>
+      <!-- Fades in once the big title below has gone under the bar -->
+      <span class="nav-compact"></span>
     </header>
+
+    <!-- The large title scrolls away with the content at exactly the
+         speed of your finger, rather than shrinking inside the bar
+         and dragging everything below it up by 40px. -->
+    <div class="title-block">
+      <h1 id="bill-title">Bill</h1>
+      <p class="nav-sub" id="bill-sub"></p>
+    </div>
 
     <main class="content">
       <div class="balance-box">
@@ -305,11 +347,17 @@
   <!-- ============ DEBTS SCREEN ============ -->
   <section class="screen" id="screen-cards" hidden>
     <header class="nav">
-      <div class="nav-row">
-        <h1>Debts</h1>
-      </div>
-      <p class="nav-sub" id="cards-summary"></p>
+      <!-- Fades in once the big title below has gone under the bar -->
+      <span class="nav-compact"></span>
     </header>
+
+    <!-- The large title scrolls away with the content at exactly the
+         speed of your finger, rather than shrinking inside the bar
+         and dragging everything below it up by 40px. -->
+    <div class="title-block">
+      <h1>Debts</h1>
+      <p class="nav-sub" id="cards-summary"></p>
+    </div>
 
     <main class="content">
       <!-- Whole-portfolio projection: minimums plus the extra, rolling
@@ -344,11 +392,17 @@
   <section class="screen" id="screen-card" hidden>
     <header class="nav">
       <button class="back-btn" id="card-back">‹ Debts</button>
-      <div class="nav-row">
-        <h1 id="card-title">Debt</h1>
-      </div>
-      <p class="nav-sub" id="card-sub"></p>
+      <!-- Fades in once the big title below has gone under the bar -->
+      <span class="nav-compact"></span>
     </header>
+
+    <!-- The large title scrolls away with the content at exactly the
+         speed of your finger, rather than shrinking inside the bar
+         and dragging everything below it up by 40px. -->
+    <div class="title-block">
+      <h1 id="card-title">Debt</h1>
+      <p class="nav-sub" id="card-sub"></p>
+    </div>
 
     <main class="content">
       <div class="balance-box">
@@ -390,11 +444,17 @@
   <!-- ============ BACKUP SCREEN ============ -->
   <section class="screen" id="screen-backup" hidden>
     <header class="nav">
-      <div class="nav-row">
-        <h1>Backup</h1>
-      </div>
-      <p class="nav-sub" id="backup-summary"></p>
+      <!-- Fades in once the big title below has gone under the bar -->
+      <span class="nav-compact"></span>
     </header>
+
+    <!-- The large title scrolls away with the content at exactly the
+         speed of your finger, rather than shrinking inside the bar
+         and dragging everything below it up by 40px. -->
+    <div class="title-block">
+      <h1>Backup</h1>
+      <p class="nav-sub" id="backup-summary"></p>
+    </div>
 
     <main class="content">
       <button class="big-btn" id="export-btn">Save a Backup</button>
