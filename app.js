@@ -2063,12 +2063,34 @@ function renderAll() {
 
 /* ---------- 10. Moving between screens -------------------- */
 
-function showScreen(name) {
-  // detail screens keep their parent tab lit
-  const parent = { card: 'cards', bill: 'bills', account: 'week',
-                   log: 'plan', calendar: 'week' };
-  const litTab = parent[name] || name;
+/* Which tab a detail screen belongs to. This keeps the right tab lit
+   while you are inside one, and it is also what tells a push from a
+   pop: opening a detail slides in from the right, going back to its
+   parent slides in from the left. */
+const SCREEN_PARENT = { card: 'cards', bill: 'bills', account: 'week',
+                        log: 'plan', calendar: 'week' };
 
+/* Where you had got to on each tab, so coming back lands you where you
+   left off instead of at the top. Detail screens keep no memory: the
+   same screen is reused for every bill and every debt, so the next one
+   you open should start at the top rather than halfway down the last
+   one's history. */
+const scrollMemory = {};
+let currentScreen = 'week';
+
+function showScreen(name) {
+  const leaving = currentScreen;
+  const isDetail = name in SCREEN_PARENT;
+  const moving = name !== leaving;
+
+  /* Read the scroll position before anything is hidden. Hiding a screen
+     can make the page shorter, and the browser clamps the scroll to the
+     new height before we would otherwise get to look at it. */
+  if (moving && !(leaving in SCREEN_PARENT)) {
+    scrollMemory[leaving] = window.scrollY;
+  }
+
+  const litTab = SCREEN_PARENT[name] || name;
   document.querySelectorAll('.tab').forEach(t => {
     t.classList.toggle('active', t.dataset.tab === litTab);
   });
@@ -2076,8 +2098,6 @@ function showScreen(name) {
     s.hidden = s.id !== 'screen-' + name;
   });
 
-  window.scrollTo(0, 0);
-  updateScrollEdge();
   // arriving at the Week tab tidies away anything paid on a previous visit
   if (name === 'week')    paidThisVisit.clear();
   if (name === 'week')     renderWeek();
@@ -2087,6 +2107,28 @@ function showScreen(name) {
   if (name === 'bills')   renderBills();
   if (name === 'account') renderAccount();
   if (name === 'backup')  renderBackupInfo();
+
+  // after the render above, so the page is at its full height again
+  window.scrollTo(0, isDetail || !moving ? 0 : (scrollMemory[name] || 0));
+
+  if (moving) {
+    slideIn(name, isDetail ? 'push'
+                : SCREEN_PARENT[leaving] === name ? 'pop'
+                : 'fade');
+  }
+
+  updateScrollEdge();
+  currentScreen = name;
+}
+
+/* Restarting an animation means taking the class off, making the
+   browser notice, then putting it back — left to itself it collapses
+   the two changes into no change at all. */
+function slideIn(name, how) {
+  const screen = $('screen-' + name);
+  screen.classList.remove('push-in', 'pop-in', 'fade-in');
+  void screen.offsetWidth;
+  screen.classList.add(how + '-in');
 }
 
 document.querySelectorAll('.tab').forEach(tab => {
